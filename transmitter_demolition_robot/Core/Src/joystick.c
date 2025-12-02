@@ -41,8 +41,7 @@
 void Joystick_Init(void)
 {
     // ADC sudah diinisialisasi di MX_ADC1_Init()
-    // Kalibrasi ADC jika diperlukan
-    HAL_ADCEx_Calibration_Start(&hadc1);
+    // STM32F4 tidak memerlukan kalibrasi ADC (hanya STM32F3/L4)
 }
 
 /**
