@@ -1,0 +1,172 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    usb.c
+  * @brief   USB CDC communication and data printing implementation
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "usb.h"
+#include "var.h"
+#include "joystick.h"
+#include "switch.h"
+#include <stdarg.h>
+
+/* Private Variables ---------------------------------------------------------*/
+static char usb_tx_buffer[USB_TX_BUFFER_SIZE];
+
+/**
+  * @brief  Initialize USB module
+  * @retval None
+  */
+void USB_Init(void)
+{
+    // USB Device already initialized in MX_USB_DEVICE_Init()
+    // Add any additional initialization here if needed
+    HAL_Delay(1000); // Wait for USB enumeration
+}
+
+/**
+  * @brief  Print formatted string via USB CDC
+  * @param  format: printf-style format string
+  * @retval None
+  */
+void USB_Print(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    int len = vsnprintf(usb_tx_buffer, USB_TX_BUFFER_SIZE, format, args);
+
+    va_end(args);
+
+    if (len > 0)
+    {
+        CDC_Transmit_FS((uint8_t*)usb_tx_buffer, len);
+    }
+}
+
+/**
+  * @brief  Print binary data via USB CDC
+  * @param  data: Pointer to data buffer
+  * @param  length: Length of data in bytes
+  * @retval None
+  */
+void USB_PrintBinary(uint8_t* data, uint16_t length)
+{
+    USB_Print("Binary Data (%d bytes):\r\n", length);
+
+    for (uint16_t i = 0; i < length; i++)
+    {
+        USB_Print("0b");
+        for (int8_t bit = 7; bit >= 0; bit--)
+        {
+            USB_Print("%d", (data[i] >> bit) & 0x01);
+        }
+        USB_Print(" ");
+
+        if ((i + 1) % 4 == 0)
+            USB_Print("\r\n");
+    }
+    USB_Print("\r\n");
+}
+
+/**
+  * @brief  Print data in hexadecimal format via USB CDC
+  * @param  data: Pointer to data buffer
+  * @param  length: Length of data in bytes
+  * @retval None
+  */
+void USB_PrintHex(uint8_t* data, uint16_t length)
+{
+    USB_Print("Hex Data (%d bytes):\r\n", length);
+
+    for (uint16_t i = 0; i < length; i++)
+    {
+        USB_Print("%02X ", data[i]);
+
+        if ((i + 1) % 16 == 0)
+            USB_Print("\r\n");
+    }
+    USB_Print("\r\n");
+}
+
+/**
+  * @brief  Print transmitter data in specified format
+  * @param  mode: Print mode (binary, hex, decimal, or debug)
+  * @retval None
+  */
+void USB_PrintTransmitterData(USB_PrintMode_t mode)
+{
+    uint8_t* data = (uint8_t*)&g_transmitter_data;
+    uint16_t length = sizeof(TransmitterData_t);
+
+    switch (mode)
+    {
+        case USB_PRINT_BINARY:
+            USB_PrintBinary(data, length);
+            break;
+
+        case USB_PRINT_HEX:
+            USB_PrintHex(data, length);
+            break;
+
+        case USB_PRINT_DECIMAL:
+            USB_Print("Transmitter Data (Decimal):\r\n");
+            USB_Print("  Joystick X: %u\r\n", g_transmitter_data.joystick_x);
+            USB_Print("  Joystick Y: %u\r\n", g_transmitter_data.joystick_y);
+            USB_Print("  Switches:   0x%02X\r\n", g_transmitter_data.switches);
+            USB_Print("  Checksum:   0x%02X\r\n", g_transmitter_data.checksum);
+            USB_Print("\r\n");
+            break;
+
+        case USB_PRINT_DEBUG:
+            USB_Print("=== Transmitter Debug Info ===\r\n");
+            USB_Print("Joystick:\r\n");
+            USB_Print("  Raw X:        %u (0x%04X)\r\n",
+                     g_transmitter_data.joystick_x,
+                     g_transmitter_data.joystick_x);
+            USB_Print("  Raw Y:        %u (0x%04X)\r\n",
+                     g_transmitter_data.joystick_y,
+                     g_transmitter_data.joystick_y);
+            USB_Print("  Calibrated X: %d\r\n", joystick.calibrated_x);
+            USB_Print("  Calibrated Y: %d\r\n", joystick.calibrated_y);
+            USB_Print("  Centered:     %s\r\n",
+                     joystick.is_centered ? "Yes" : "No");
+
+            USB_Print("\nSwitches (0x%02X):\r\n", g_transmitter_data.switches);
+            for (uint8_t i = 0; i < MAX_SWITCHES; i++)
+            {
+                USB_Print("  Switch %d: %s\r\n", i,
+                         Switch_GetBit(i) ? "ON" : "OFF");
+            }
+
+            USB_Print("\nData Integrity:\r\n");
+            USB_Print("  Checksum:     0x%02X\r\n", g_transmitter_data.checksum);
+            USB_Print("  Valid:        %s\r\n",
+                     VAR_ValidateChecksum() ? "Yes" : "No");
+
+            USB_Print("\nBinary Packet (for LoRa):\r\n");
+            USB_PrintHex(data, length);
+
+            USB_Print("Data size: %d bytes (optimized for LoRa)\r\n", length);
+            USB_Print("==============================\r\n\r\n");
+            break;
+    }
+}
+
+/**
+  * @brief  Send raw binary data via USB CDC
+  * @param  data: Pointer to data buffer
+  * @param  length: Length of data in bytes
+  * @retval None
+  */
+void USB_SendRawData(uint8_t* data, uint16_t length)
+{
+    if (length > 0 && data != NULL)
+    {
+        CDC_Transmit_FS(data, length);
+    }
+}

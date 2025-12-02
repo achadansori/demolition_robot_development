@@ -1,0 +1,62 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    switch.h
+  * @brief   Switch/Button handling via GPIO
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+#ifndef __SWITCH_H__
+#define __SWITCH_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "gpio.h"
+#include <stdint.h>
+
+/* Defines -------------------------------------------------------------------*/
+#define MAX_SWITCHES        8   // Maximum 8 switches (fits in 1 byte)
+#define DEBOUNCE_TIME_MS    50  // Debounce time in milliseconds
+
+/* Switch Bit Positions (for binary packing) ---------------------------------*/
+#define SWITCH_0_BIT        0
+#define SWITCH_1_BIT        1
+#define SWITCH_2_BIT        2
+#define SWITCH_3_BIT        3
+#define SWITCH_4_BIT        4
+#define SWITCH_5_BIT        5
+#define SWITCH_6_BIT        6
+#define SWITCH_7_BIT        7
+
+/* Switch Structure ----------------------------------------------------------*/
+typedef struct {
+    uint8_t current_state;      // Current state of all switches (bit-packed)
+    uint8_t previous_state;     // Previous state for edge detection
+    uint32_t debounce_timer[MAX_SWITCHES]; // Debounce timer for each switch
+    uint8_t pressed[MAX_SWITCHES];   // 1 if switch is currently pressed
+    uint8_t released[MAX_SWITCHES];  // 1 if switch was just released
+} Switch_t;
+
+/* Global Switch Object ------------------------------------------------------*/
+extern Switch_t switches;
+
+/* Function Prototypes -------------------------------------------------------*/
+void Switch_Init(void);
+void Switch_Read(void);
+void Switch_Update(void);
+uint8_t Switch_GetState(void);
+uint8_t Switch_IsPressed(uint8_t switch_num);
+uint8_t Switch_IsReleased(uint8_t switch_num);
+void Switch_SetBit(uint8_t bit_position, uint8_t value);
+uint8_t Switch_GetBit(uint8_t bit_position);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __SWITCH_H__ */

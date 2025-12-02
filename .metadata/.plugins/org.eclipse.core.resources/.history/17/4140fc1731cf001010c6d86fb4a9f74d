@@ -1,0 +1,57 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    joystick.h
+  * @brief   Joystick handling via ADC
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+#ifndef __JOYSTICK_H__
+#define __JOYSTICK_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "adc.h"
+#include <stdint.h>
+
+/* Defines -------------------------------------------------------------------*/
+#define JOYSTICK_ADC_CHANNELS   2
+#define JOYSTICK_X_CHANNEL      0
+#define JOYSTICK_Y_CHANNEL      1
+
+/* ADC Configuration */
+#define JOYSTICK_ADC_RESOLUTION 12      // 12-bit ADC
+#define JOYSTICK_MAX_VALUE      4095    // 2^12 - 1
+#define JOYSTICK_CENTER_VALUE   2048    // Center position
+#define JOYSTICK_DEADZONE       100     // Deadzone around center
+
+/* Joystick Structure --------------------------------------------------------*/
+typedef struct {
+    uint16_t raw_x;         // Raw ADC value X
+    uint16_t raw_y;         // Raw ADC value Y
+    int16_t  calibrated_x;  // Calibrated X (-2048 to +2047)
+    int16_t  calibrated_y;  // Calibrated Y (-2048 to +2047)
+    uint8_t  is_centered;   // 1 if joystick is in deadzone
+} Joystick_t;
+
+/* Global Joystick Object ----------------------------------------------------*/
+extern Joystick_t joystick;
+
+/* Function Prototypes -------------------------------------------------------*/
+void Joystick_Init(void);
+void Joystick_Read(void);
+void Joystick_Calibrate(void);
+void Joystick_ApplyDeadzone(void);
+uint16_t Joystick_GetX(void);
+uint16_t Joystick_GetY(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __JOYSTICK_H__ */

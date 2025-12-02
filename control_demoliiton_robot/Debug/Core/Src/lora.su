@@ -1,0 +1,8 @@
+../Core/Src/lora.c:44:13:LoRa_SetMode	16	static
+../Core/Src/lora.c:76:6:LoRa_Receiver_Init	24	static
+../Core/Src/lora.c:102:6:LoRa_Receiver_Configure	24	static
+../Core/Src/lora.c:156:6:LoRa_Receiver_StartListening	8	static
+../Core/Src/lora.c:169:6:LoRa_Receiver_IsDataAvailable	4	static
+../Core/Src/lora.c:179:6:LoRa_Receiver_GetData	16	static
+../Core/Src/lora.c:200:6:LoRa_Receiver_IRQHandler	8	static
+../Core/Src/lora.c:240:13:LoRa_ParseCSV	112	static
