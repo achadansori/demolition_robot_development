@@ -1,0 +1,106 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    joystick.c
+  * @brief   Joystick handling via ADC implementation
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "joystick.h"
+#include "var.h"
+
+/* Global Variables ----------------------------------------------------------*/
+Joystick_t joystick = {0};
+
+/* Private Variables ---------------------------------------------------------*/
+static uint32_t adc_buffer[JOYSTICK_ADC_CHANNELS] = {0};
+
+/**
+  * @brief  Initialize joystick module
+  * @retval None
+  */
+void Joystick_Init(void)
+{
+    joystick.raw_x = JOYSTICK_CENTER_VALUE;
+    joystick.raw_y = JOYSTICK_CENTER_VALUE;
+    joystick.calibrated_x = 0;
+    joystick.calibrated_y = 0;
+    joystick.is_centered = 1;
+
+    // Start ADC in DMA mode for continuous reading
+    HAL_ADC_Start_DMA(&hadc1, adc_buffer, JOYSTICK_ADC_CHANNELS);
+}
+
+/**
+  * @brief  Read joystick ADC values
+  * @retval None
+  */
+void Joystick_Read(void)
+{
+    // Read raw ADC values from DMA buffer
+    joystick.raw_x = (uint16_t)adc_buffer[JOYSTICK_X_CHANNEL];
+    joystick.raw_y = (uint16_t)adc_buffer[JOYSTICK_Y_CHANNEL];
+
+    // Calibrate values
+    Joystick_Calibrate();
+
+    // Apply deadzone
+    Joystick_ApplyDeadzone();
+
+    // Update global transmitter data
+    g_transmitter_data.joystick_x = joystick.raw_x;
+    g_transmitter_data.joystick_y = joystick.raw_y;
+}
+
+/**
+  * @brief  Calibrate joystick values to center
+  * @retval None
+  */
+void Joystick_Calibrate(void)
+{
+    // Convert to signed values centered at 0
+    joystick.calibrated_x = (int16_t)(joystick.raw_x - JOYSTICK_CENTER_VALUE);
+    joystick.calibrated_y = (int16_t)(joystick.raw_y - JOYSTICK_CENTER_VALUE);
+}
+
+/**
+  * @brief  Apply deadzone to joystick values
+  * @retval None
+  */
+void Joystick_ApplyDeadzone(void)
+{
+    // Check if joystick is within deadzone
+    if ((joystick.calibrated_x > -JOYSTICK_DEADZONE &&
+         joystick.calibrated_x < JOYSTICK_DEADZONE) &&
+        (joystick.calibrated_y > -JOYSTICK_DEADZONE &&
+         joystick.calibrated_y < JOYSTICK_DEADZONE))
+    {
+        joystick.is_centered = 1;
+        joystick.calibrated_x = 0;
+        joystick.calibrated_y = 0;
+    }
+    else
+    {
+        joystick.is_centered = 0;
+    }
+}
+
+/**
+  * @brief  Get joystick X value
+  * @retval X value (0-4095)
+  */
+uint16_t Joystick_GetX(void)
+{
+    return joystick.raw_x;
+}
+
+/**
+  * @brief  Get joystick Y value
+  * @retval Y value (0-4095)
+  */
+uint16_t Joystick_GetY(void)
+{
+    return joystick.raw_y;
+}

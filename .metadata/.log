@@ -1,0 +1,51 @@
+!SESSION 2025-12-02 10:11:48.626 -----------------------------------------------
+eclipse.buildId=Version 1.15.1
+java.version=17.0.8.1
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_US
+Command-line arguments:  -os linux -ws gtk -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 4 4 2025-12-02 10:12:05.662
+!MESSAGE CubeMX plugin appears to be active, Log4j initialization might be too late.
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2025-12-02 10:12:05.662
+!MESSAGE Log4j2 initialized with config file /home/achadansori/STM32CubeIDE/demolition_robot_development/.metadata/.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2025-12-02 10:12:38.312
+!MESSAGE Started RMI Server, listening on port 41337
+
+!ENTRY org.eclipse.cdt.core 1 0 2025-12-02 10:13:02.068
+!MESSAGE Indexed 'transmitter_demolition_robot' (37 sources, 118 headers) in 5.19 sec: 13,452 declarations; 57,591 references; 1 unresolved inclusions; 92 syntax errors; 238 unresolved names (0.33%)
+!SESSION 2025-12-02 10:18:50.346 -----------------------------------------------
+eclipse.buildId=Version 1.15.1
+java.version=17.0.8.1
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_US
+Command-line arguments:  -os linux -ws gtk -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 4 4 2025-12-02 10:19:01.598
+!MESSAGE CubeMX plugin appears to be active, Log4j initialization might be too late.
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2025-12-02 10:19:01.599
+!MESSAGE Log4j2 initialized with config file /home/achadansori/STM32CubeIDE/demolition_robot_development/.metadata/.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2025-12-02 10:19:16.860
+!MESSAGE Started RMI Server, listening on port 41337
+!SESSION 2025-12-02 10:19:37.513 -----------------------------------------------
+eclipse.buildId=Version 1.15.1
+java.version=17.0.8.1
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_US
+Command-line arguments:  -os linux -ws gtk -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 4 4 2025-12-02 10:19:44.376
+!MESSAGE CubeMX plugin appears to be active, Log4j initialization might be too late.
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2025-12-02 10:19:44.376
+!MESSAGE Log4j2 initialized with config file /home/achadansori/STM32CubeIDE/demolition_robot_development/.metadata/.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2025-12-02 10:19:50.409
+!MESSAGE Started RMI Server, listening on port 41337
+
+!ENTRY org.eclipse.cdt.core 1 0 2025-12-02 10:32:49.866
+!MESSAGE Indexed 'control_demoliiton_robot' (39 sources, 123 headers) in 4.09 sec: 15,291 declarations; 83,589 references; 1 unresolved inclusions; 92 syntax errors; 238 unresolved names (0.24%)

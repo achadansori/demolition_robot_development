@@ -1,0 +1,180 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    switch.c
+  * @brief   Switch/Button handling via GPIO implementation
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "switch.h"
+#include "var.h"
+
+/* Global Variables ----------------------------------------------------------*/
+Switch_t switches = {0};
+
+/**
+  * @brief  Initialize switch module
+  * @retval None
+  */
+void Switch_Init(void)
+{
+    switches.current_state = 0;
+    switches.previous_state = 0;
+
+    for (uint8_t i = 0; i < MAX_SWITCHES; i++)
+    {
+        switches.debounce_timer[i] = 0;
+        switches.pressed[i] = 0;
+        switches.released[i] = 0;
+    }
+}
+
+/**
+  * @brief  Read all switches from GPIO
+  * @note   Modify this function based on your actual GPIO pins
+  * @retval None
+  */
+void Switch_Read(void)
+{
+    uint8_t new_state = 0;
+
+    // Example: Read GPIO pins and pack into byte
+    // Modify these according to your actual GPIO pin configuration
+    // Assuming switches are active LOW (pressed = 0)
+
+    // Switch 0 - Example: GPIOA, GPIO_PIN_0
+    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET)
+        new_state |= (1 << SWITCH_0_BIT);
+
+    // Switch 1 - Example: GPIOA, GPIO_PIN_1
+    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_RESET)
+        new_state |= (1 << SWITCH_1_BIT);
+
+    // Switch 2 - Example: GPIOA, GPIO_PIN_2
+    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == GPIO_PIN_RESET)
+        new_state |= (1 << SWITCH_2_BIT);
+
+    // Switch 3 - Example: GPIOA, GPIO_PIN_3
+    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == GPIO_PIN_RESET)
+        new_state |= (1 << SWITCH_3_BIT);
+
+    // Add more switches as needed...
+    // Switch 4, 5, 6, 7...
+
+    switches.current_state = new_state;
+}
+
+/**
+  * @brief  Update switch states with debouncing
+  * @retval None
+  */
+void Switch_Update(void)
+{
+    uint32_t current_tick = HAL_GetTick();
+
+    for (uint8_t i = 0; i < MAX_SWITCHES; i++)
+    {
+        uint8_t current = (switches.current_state >> i) & 0x01;
+        uint8_t previous = (switches.previous_state >> i) & 0x01;
+
+        // Detect state change
+        if (current != previous)
+        {
+            // Check debounce timer
+            if ((current_tick - switches.debounce_timer[i]) > DEBOUNCE_TIME_MS)
+            {
+                switches.debounce_timer[i] = current_tick;
+
+                // Update pressed/released flags
+                if (current && !previous)
+                {
+                    switches.pressed[i] = 1;
+                    switches.released[i] = 0;
+                }
+                else if (!current && previous)
+                {
+                    switches.pressed[i] = 0;
+                    switches.released[i] = 1;
+                }
+            }
+        }
+        else
+        {
+            // Clear edge detection flags if state is stable
+            switches.pressed[i] = 0;
+            switches.released[i] = 0;
+        }
+    }
+
+    switches.previous_state = switches.current_state;
+
+    // Update global transmitter data
+    g_transmitter_data.switches = switches.current_state;
+}
+
+/**
+  * @brief  Get current state of all switches (bit-packed)
+  * @retval 8-bit value representing all switch states
+  */
+uint8_t Switch_GetState(void)
+{
+    return switches.current_state;
+}
+
+/**
+  * @brief  Check if a specific switch is pressed
+  * @param  switch_num: Switch number (0-7)
+  * @retval 1 if pressed, 0 otherwise
+  */
+uint8_t Switch_IsPressed(uint8_t switch_num)
+{
+    if (switch_num >= MAX_SWITCHES)
+        return 0;
+
+    return switches.pressed[switch_num];
+}
+
+/**
+  * @brief  Check if a specific switch was released
+  * @param  switch_num: Switch number (0-7)
+  * @retval 1 if released, 0 otherwise
+  */
+uint8_t Switch_IsReleased(uint8_t switch_num)
+{
+    if (switch_num >= MAX_SWITCHES)
+        return 0;
+
+    return switches.released[switch_num];
+}
+
+/**
+  * @brief  Set a specific bit in switch state
+  * @param  bit_position: Bit position (0-7)
+  * @param  value: Value to set (0 or 1)
+  * @retval None
+  */
+void Switch_SetBit(uint8_t bit_position, uint8_t value)
+{
+    if (bit_position >= MAX_SWITCHES)
+        return;
+
+    if (value)
+        switches.current_state |= (1 << bit_position);
+    else
+        switches.current_state &= ~(1 << bit_position);
+}
+
+/**
+  * @brief  Get a specific bit from switch state
+  * @param  bit_position: Bit position (0-7)
+  * @retval Bit value (0 or 1)
+  */
+uint8_t Switch_GetBit(uint8_t bit_position)
+{
+    if (bit_position >= MAX_SWITCHES)
+        return 0;
+
+    return (switches.current_state >> bit_position) & 0x01;
+}

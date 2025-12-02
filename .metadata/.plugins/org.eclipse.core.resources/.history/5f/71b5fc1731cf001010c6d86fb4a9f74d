@@ -1,0 +1,48 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    usb.h
+  * @brief   USB CDC communication and data printing
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+#ifndef __USB_H__
+#define __USB_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "usb_device.h"
+#include "usbd_cdc_if.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+/* Defines -------------------------------------------------------------------*/
+#define USB_TX_BUFFER_SIZE  256
+
+/* USB Print Modes -----------------------------------------------------------*/
+typedef enum {
+    USB_PRINT_BINARY,   // Print raw binary data
+    USB_PRINT_HEX,      // Print data in hex format
+    USB_PRINT_DECIMAL,  // Print data in decimal format
+    USB_PRINT_DEBUG     // Print detailed debug information
+} USB_PrintMode_t;
+
+/* Function Prototypes -------------------------------------------------------*/
+void USB_Init(void);
+void USB_Print(const char* format, ...);
+void USB_PrintBinary(uint8_t* data, uint16_t length);
+void USB_PrintHex(uint8_t* data, uint16_t length);
+void USB_PrintTransmitterData(USB_PrintMode_t mode);
+void USB_SendRawData(uint8_t* data, uint16_t length);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __USB_H__ */

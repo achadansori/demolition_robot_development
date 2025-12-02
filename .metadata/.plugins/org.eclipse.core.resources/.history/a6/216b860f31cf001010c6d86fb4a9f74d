@@ -1,0 +1,73 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    var.c
+  * @brief   Global variables and binary data structure implementation
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "var.h"
+
+/* Global Variables ----------------------------------------------------------*/
+TransmitterData_t g_transmitter_data = {0};
+uint8_t g_data_ready = 0;
+
+/**
+  * @brief  Initialize global variables
+  * @retval None
+  */
+void VAR_Init(void)
+{
+    g_transmitter_data.joystick_x = 0;
+    g_transmitter_data.joystick_y = 0;
+    g_transmitter_data.switches = 0;
+    g_transmitter_data.checksum = 0;
+    g_data_ready = 0;
+}
+
+/**
+  * @brief  Calculate and update checksum for data integrity
+  * @retval None
+  */
+void VAR_UpdateChecksum(void)
+{
+    uint8_t* data = (uint8_t*)&g_transmitter_data;
+    uint8_t sum = 0;
+
+    // Calculate simple XOR checksum (exclude checksum byte itself)
+    for (uint8_t i = 0; i < sizeof(TransmitterData_t) - 1; i++)
+    {
+        sum ^= data[i];
+    }
+
+    g_transmitter_data.checksum = sum;
+}
+
+/**
+  * @brief  Validate checksum
+  * @retval 1 if valid, 0 if invalid
+  */
+uint8_t VAR_ValidateChecksum(void)
+{
+    uint8_t* data = (uint8_t*)&g_transmitter_data;
+    uint8_t sum = 0;
+
+    // Calculate checksum
+    for (uint8_t i = 0; i < sizeof(TransmitterData_t) - 1; i++)
+    {
+        sum ^= data[i];
+    }
+
+    return (sum == g_transmitter_data.checksum) ? 1 : 0;
+}
+
+/**
+  * @brief  Reset all data to default values
+  * @retval None
+  */
+void VAR_ResetData(void)
+{
+    VAR_Init();
+}

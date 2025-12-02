@@ -1,0 +1,44 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    var.h
+  * @brief   Global variables and binary data structure
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+#ifndef __VAR_H__
+#define __VAR_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include <stdint.h>
+
+/* Binary Data Structure for LoRa transmission --------------------------------*/
+/* Total: 6 bytes - Very compact for LoRa */
+typedef struct __attribute__((packed)) {
+    uint16_t joystick_x;    // 2 bytes - ADC value (0-4095, 12-bit)
+    uint16_t joystick_y;    // 2 bytes - ADC value (0-4095, 12-bit)
+    uint8_t  switches;      // 1 byte  - Up to 8 switches (bit-packed)
+    uint8_t  checksum;      // 1 byte  - Simple checksum for data integrity
+} TransmitterData_t;
+
+/* Global Variables ----------------------------------------------------------*/
+extern TransmitterData_t g_transmitter_data;
+extern uint8_t g_data_ready;
+
+/* Function Prototypes -------------------------------------------------------*/
+void VAR_Init(void);
+void VAR_UpdateChecksum(void);
+uint8_t VAR_ValidateChecksum(void);
+void VAR_ResetData(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __VAR_H__ */

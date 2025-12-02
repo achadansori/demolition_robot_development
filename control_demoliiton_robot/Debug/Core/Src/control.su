@@ -1,0 +1,3 @@
+../Core/Src/control.c:16:6:Control_Init	32	static
+../Core/Src/control.c:32:6:Control_Update	24	static
+../Core/Src/control.c:85:6:Control_EmergencyStop	8	static
