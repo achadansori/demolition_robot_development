@@ -25,7 +25,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+// Custom modules (OOP style)
+#include "var.h"
+#include "joystick.h"
+#include "switch.h"
+#include "usb.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -93,7 +97,18 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+  // Initialize custom modules
+  Var_Init();      // Initialize data structure dan sub-modules (joystick, switch)
+  USB_Init();      // Initialize USB CDC
 
+  // Welcome message
+  USB_Print("\r\n\r\n");
+  USB_Print("========================================\r\n");
+  USB_Print("   DEMOLITION ROBOT TRANSMITTER\r\n");
+  USB_Print("========================================\r\n");
+  USB_Print("Data Size: 8 bytes (optimized for LoRa)\r\n");
+  USB_Print("Binary format ready for transmission\r\n");
+  USB_Print("========================================\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -103,6 +118,16 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // Update semua data sensor
+    Var_Update();
+
+    // Print data dalam berbagai format
+    USB_PrintData(&tx_data);           // Readable format
+    USB_PrintHex(Var_GetBinaryData(), Var_GetDataSize());    // Hex format
+    USB_PrintBinary(Var_GetBinaryData(), Var_GetDataSize()); // Binary format
+
+    // Delay untuk readability di serial monitor
+    HAL_Delay(500);
   }
   /* USER CODE END 3 */
 }
