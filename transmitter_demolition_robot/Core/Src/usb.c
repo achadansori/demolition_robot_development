@@ -94,95 +94,62 @@ void USB_Print(const char* str)
 void USB_PrintData(Transmitter_Data_t* data)
 {
     int len = 0;
-    char bar[30];
+    int offset = 0;
+    char bar_lx[30], bar_ly[30], bar_rx[30], bar_ry[30], bar_r8[30], bar_r1[30];
 
-    // Clear screen (ANSI escape code) dan home cursor
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE, "\033[2J\033[H");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
+    // Prepare all progress bars first
+    USB_PrintProgressBar(data->joystick.left_x, bar_lx, sizeof(bar_lx));
+    USB_PrintProgressBar(data->joystick.left_y, bar_ly, sizeof(bar_ly));
+    USB_PrintProgressBar(data->joystick.right_x, bar_rx, sizeof(bar_rx));
+    USB_PrintProgressBar(data->joystick.right_y, bar_ry, sizeof(bar_ry));
+    USB_PrintProgressBar(data->joystick.r8, bar_r8, sizeof(bar_r8));
+    USB_PrintProgressBar(data->joystick.r1, bar_r1, sizeof(bar_r1));
 
-    // Header dengan border
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
+    // Build complete display in buffer (single transmission)
+    offset = 0;
+
+    // Clear screen and header
+    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
+        "\033[2J\033[H"
         "╔════════════════════════════════════════════════════════╗\r\n"
         "║      DEMOLITION ROBOT TRANSMITTER - LIVE DATA          ║\r\n"
         "╚════════════════════════════════════════════════════════╝\r\n\r\n");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
 
     // Joystick Left
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "┌─ JOYSTICK LEFT ────────────────────────────────────────┐\r\n");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    USB_PrintProgressBar(data->joystick.left_x, bar, sizeof(bar));
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "│  X-Axis: %3d  %s │\r\n", data->joystick.left_x, bar);
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    USB_PrintProgressBar(data->joystick.left_y, bar, sizeof(bar));
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "│  Y-Axis: %3d  %s │\r\n", data->joystick.left_y, bar);
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
+    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
+        "┌─ JOYSTICK LEFT ────────────────────────────────────────┐\r\n"
+        "│  X-Axis: %3d  %s │\r\n"
+        "│  Y-Axis: %3d  %s │\r\n"
         "│  Btn1: %s   Btn2: %s                                │\r\n"
         "└────────────────────────────────────────────────────────┘\r\n\r\n",
+        data->joystick.left_x, bar_lx,
+        data->joystick.left_y, bar_ly,
         data->switches.joy_left_btn1 ? "[ON]" : "[--]",
         data->switches.joy_left_btn2 ? "[ON]" : "[--]");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
 
     // Joystick Right
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "┌─ JOYSTICK RIGHT ───────────────────────────────────────┐\r\n");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    USB_PrintProgressBar(data->joystick.right_x, bar, sizeof(bar));
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "│  X-Axis: %3d  %s │\r\n", data->joystick.right_x, bar);
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    USB_PrintProgressBar(data->joystick.right_y, bar, sizeof(bar));
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "│  Y-Axis: %3d  %s │\r\n", data->joystick.right_y, bar);
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
+    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
+        "┌─ JOYSTICK RIGHT ───────────────────────────────────────┐\r\n"
+        "│  X-Axis: %3d  %s │\r\n"
+        "│  Y-Axis: %3d  %s │\r\n"
         "│  Btn1: %s   Btn2: %s                                │\r\n"
         "└────────────────────────────────────────────────────────┘\r\n\r\n",
+        data->joystick.right_x, bar_rx,
+        data->joystick.right_y, bar_ry,
         data->switches.joy_right_btn1 ? "[ON]" : "[--]",
         data->switches.joy_right_btn2 ? "[ON]" : "[--]");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
 
     // Potentiometers
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "┌─ POTENTIOMETERS ───────────────────────────────────────┐\r\n");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    USB_PrintProgressBar(data->joystick.r8, bar, sizeof(bar));
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "│  R8:  %3d     %s │\r\n", data->joystick.r8, bar);
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    USB_PrintProgressBar(data->joystick.r1, bar, sizeof(bar));
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
+    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
+        "┌─ POTENTIOMETERS ───────────────────────────────────────┐\r\n"
+        "│  R8:  %3d     %s │\r\n"
         "│  R1:  %3d     %s │\r\n"
         "└────────────────────────────────────────────────────────┘\r\n\r\n",
-        data->joystick.r1, bar);
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
+        data->joystick.r8, bar_r8,
+        data->joystick.r1, bar_r1);
 
     // Switches
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
+    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
         "┌─ SWITCHES ─────────────────────────────────────────────┐\r\n"
         "│  S0: %s  S1: %s,%s  S2: %s,%s  S4: %s,%s  S5: %s,%s  │\r\n"
         "└────────────────────────────────────────────────────────┘\r\n\r\n",
@@ -191,8 +158,10 @@ void USB_PrintData(Transmitter_Data_t* data)
         data->switches.s2_1 ? "[1]" : "[0]", data->switches.s2_2 ? "[1]" : "[0]",
         data->switches.s4_1 ? "[1]" : "[0]", data->switches.s4_2 ? "[1]" : "[0]",
         data->switches.s5_1 ? "[1]" : "[0]", data->switches.s5_2 ? "[1]" : "[0]");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
+
+    // Single transmission of complete display
+    CDC_Transmit_FS((uint8_t*)usb_buffer, offset);
+    HAL_Delay(50);
 }
 
 /**
