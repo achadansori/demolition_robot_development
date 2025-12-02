@@ -43,8 +43,50 @@ static uint32_t last_rx_timestamp = 0;
 static LoRa_RxCallback_t rx_callback = NULL;
 
 /* Private function prototypes -----------------------------------------------*/
+static LoRa_Status_t LoRa_ConfigureModule(void);
 
 /* Private user code ---------------------------------------------------------*/
+
+/**
+  * @brief  Configure LoRa module to channel 2 with optimal settings
+  * @retval LoRa_Status_t
+  */
+static LoRa_Status_t LoRa_ConfigureModule(void)
+{
+    uint8_t cmd[9];
+
+    // Enter CONFIG mode (M0=0, M1=1)
+    LoRa_SetMode(LORA_MODE_CONFIG);
+    HAL_Delay(100);
+
+    // Build configuration command (SAME as transmitter!)
+    // Format: 0xC0 0x00 0x06 [ADDH] [ADDL] [REG0] [REG1] [REG2] [REG3]
+    cmd[0] = 0xC0;  // Write config command
+    cmd[1] = 0x00;  // Start address
+    cmd[2] = 0x06;  // Length
+    cmd[3] = 0x00;  // ADDH (Address High) = 0x00
+    cmd[4] = 0x00;  // ADDL (Address Low) = 0x00 (Broadcast)
+    cmd[5] = 0xE5;  // REG0: UART 115200 (111) + Parity 8N1 (00) + Air rate 62.5k (101) = 0xE5
+    cmd[6] = 0xC0;  // REG1: Packet 32 bytes (11) + RSSI off (0) + Power 22dBm (00000) = 0xC0
+    cmd[7] = 0x02;  // REG2: Channel 2 (852.125 MHz) - MUST MATCH TRANSMITTER!
+    cmd[8] = 0x00;  // REG3: Default (RSSI disabled, transparent mode)
+
+    // Send configuration via polling (DMA not available in config mode)
+    if (HAL_UART_Transmit(&huart1, cmd, 9, 1000) != HAL_OK)
+    {
+        LoRa_SetMode(LORA_MODE_NORMAL);
+        return LORA_ERROR;
+    }
+
+    // Wait for module to process
+    HAL_Delay(50);
+
+    // Return to NORMAL mode
+    LoRa_SetMode(LORA_MODE_NORMAL);
+    HAL_Delay(50);
+
+    return LORA_OK;
+}
 
 /**
   * @brief  Initialize LoRa module for reception
@@ -52,7 +94,10 @@ static LoRa_RxCallback_t rx_callback = NULL;
   */
 LoRa_Status_t LoRa_Init(void)
 {
-    // Set mode pins to Normal mode (M0=0, M1=0) for lowest latency
+    // Configure module to channel 2 with optimal settings (same as transmitter)
+    LoRa_ConfigureModule();
+
+    // Set to Normal mode (M0=0, M1=0) for reception
     LoRa_SetMode(LORA_MODE_NORMAL);
 
     // Small delay for module stabilization
