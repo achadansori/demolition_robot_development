@@ -105,7 +105,11 @@ void Error_Handler(void);
 #define MEMS_INT2_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */
-
+// LoRa E220 Module pins (Receiver)
+#define LORA_M0_Pin GPIO_PIN_4
+#define LORA_M0_GPIO_Port GPIOE
+#define LORA_M1_Pin GPIO_PIN_5
+#define LORA_M1_GPIO_Port GPIOE
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
