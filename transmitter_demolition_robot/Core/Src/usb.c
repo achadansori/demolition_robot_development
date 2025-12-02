@@ -94,74 +94,27 @@ void USB_Print(const char* str)
 void USB_PrintData(Transmitter_Data_t* data)
 {
     int len = 0;
-    int offset = 0;
-    char bar_lx[30], bar_ly[30], bar_rx[30], bar_ry[30], bar_r8[30], bar_r1[30];
 
-    // Prepare all progress bars first
-    USB_PrintProgressBar(data->joystick.left_x, bar_lx, sizeof(bar_lx));
-    USB_PrintProgressBar(data->joystick.left_y, bar_ly, sizeof(bar_ly));
-    USB_PrintProgressBar(data->joystick.right_x, bar_rx, sizeof(bar_rx));
-    USB_PrintProgressBar(data->joystick.right_y, bar_ry, sizeof(bar_ry));
-    USB_PrintProgressBar(data->joystick.r8, bar_r8, sizeof(bar_r8));
-    USB_PrintProgressBar(data->joystick.r1, bar_r1, sizeof(bar_r1));
+    // Single line format - easy to read, no screen corruption
+    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
+        "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%03d,R1=%03d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
+        data->joystick.left_x,
+        data->joystick.left_y,
+        data->switches.joy_left_btn1,
+        data->switches.joy_left_btn2,
+        data->joystick.right_x,
+        data->joystick.right_y,
+        data->switches.joy_right_btn1,
+        data->switches.joy_right_btn2,
+        data->joystick.r8,
+        data->joystick.r1,
+        data->switches.s0,
+        data->switches.s1_1, data->switches.s1_2,
+        data->switches.s2_1, data->switches.s2_2,
+        data->switches.s4_1, data->switches.s4_2,
+        data->switches.s5_1, data->switches.s5_2);
 
-    // Build complete display in buffer (single transmission)
-    offset = 0;
-
-    // Clear screen and header
-    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
-        "\033[2J\033[H"
-        "╔════════════════════════════════════════════════════════╗\r\n"
-        "║      DEMOLITION ROBOT TRANSMITTER - LIVE DATA          ║\r\n"
-        "╚════════════════════════════════════════════════════════╝\r\n\r\n");
-
-    // Joystick Left
-    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
-        "┌─ JOYSTICK LEFT ────────────────────────────────────────┐\r\n"
-        "│  X-Axis: %3d  %s │\r\n"
-        "│  Y-Axis: %3d  %s │\r\n"
-        "│  Btn1: %s   Btn2: %s                                │\r\n"
-        "└────────────────────────────────────────────────────────┘\r\n\r\n",
-        data->joystick.left_x, bar_lx,
-        data->joystick.left_y, bar_ly,
-        data->switches.joy_left_btn1 ? "[ON]" : "[--]",
-        data->switches.joy_left_btn2 ? "[ON]" : "[--]");
-
-    // Joystick Right
-    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
-        "┌─ JOYSTICK RIGHT ───────────────────────────────────────┐\r\n"
-        "│  X-Axis: %3d  %s │\r\n"
-        "│  Y-Axis: %3d  %s │\r\n"
-        "│  Btn1: %s   Btn2: %s                                │\r\n"
-        "└────────────────────────────────────────────────────────┘\r\n\r\n",
-        data->joystick.right_x, bar_rx,
-        data->joystick.right_y, bar_ry,
-        data->switches.joy_right_btn1 ? "[ON]" : "[--]",
-        data->switches.joy_right_btn2 ? "[ON]" : "[--]");
-
-    // Potentiometers
-    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
-        "┌─ POTENTIOMETERS ───────────────────────────────────────┐\r\n"
-        "│  R8:  %3d     %s │\r\n"
-        "│  R1:  %3d     %s │\r\n"
-        "└────────────────────────────────────────────────────────┘\r\n\r\n",
-        data->joystick.r8, bar_r8,
-        data->joystick.r1, bar_r1);
-
-    // Switches
-    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
-        "┌─ SWITCHES ─────────────────────────────────────────────┐\r\n"
-        "│  S0: %s  S1: %s,%s  S2: %s,%s  S4: %s,%s  S5: %s,%s  │\r\n"
-        "└────────────────────────────────────────────────────────┘\r\n\r\n",
-        data->switches.s0 ? "[1]" : "[0]",
-        data->switches.s1_1 ? "[1]" : "[0]", data->switches.s1_2 ? "[1]" : "[0]",
-        data->switches.s2_1 ? "[1]" : "[0]", data->switches.s2_2 ? "[1]" : "[0]",
-        data->switches.s4_1 ? "[1]" : "[0]", data->switches.s4_2 ? "[1]" : "[0]",
-        data->switches.s5_1 ? "[1]" : "[0]", data->switches.s5_2 ? "[1]" : "[0]");
-
-    // Single transmission of complete display
-    CDC_Transmit_FS((uint8_t*)usb_buffer, offset);
-    HAL_Delay(50);
+    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
 }
 
 /**
@@ -221,31 +174,14 @@ void USB_PrintHex(uint8_t* data, uint16_t size)
     int len = 0;
     int offset = 0;
 
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "┌─ BINARY DATA PACKET (%d bytes for LoRa) ───────────────┐\r\n"
-        "│  HEX: ", size);
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
-
-    // Print hex string
-    offset = 0;
+    // Simple hex format on single line
+    offset = snprintf(usb_buffer, USB_TX_BUFFER_SIZE, "HEX:");
     for (uint16_t i = 0; i < size; i++)
     {
         offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset,
-            "%02X ", data[i]);
+            "%02X", data[i]);
     }
-
-    // Pad to align
-    while (offset < 35) {
-        offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset, " ");
-    }
-    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset, "│\r\n");
+    offset += snprintf(usb_buffer + offset, USB_TX_BUFFER_SIZE - offset, "\r\n");
 
     CDC_Transmit_FS((uint8_t*)usb_buffer, offset);
-    HAL_Delay(5);
-
-    len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "└────────────────────────────────────────────────────────┘\r\n");
-    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
-    HAL_Delay(5);
 }

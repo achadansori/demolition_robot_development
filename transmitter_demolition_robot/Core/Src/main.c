@@ -121,12 +121,12 @@ int main(void)
     // Update semua data sensor
     Var_Update();
 
-    // Print data dalam format readable + hex data packet
+    // Print data dalam satu baris simple (tidak rusak di terminal)
     USB_PrintData(&tx_data);
     USB_PrintHex(Var_GetBinaryData(), Var_GetDataSize());
 
     // Delay untuk readability di serial monitor
-    HAL_Delay(1000);
+    HAL_Delay(500);
   }
   /* USER CODE END 3 */
 }
