@@ -51,6 +51,17 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
+  /* USER CODE BEGIN MX_GPIO_Init_PreConfig */
+  /* Configure LoRa M0 and M1 pins as output (default LOW for Normal mode) */
+  HAL_GPIO_WritePin(GPIOB, LORA_M0_Pin|LORA_M1_Pin, GPIO_PIN_RESET);
+
+  GPIO_InitStruct.Pin = LORA_M0_Pin|LORA_M1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  /* USER CODE END MX_GPIO_Init_PreConfig */
+
   /*Configure GPIO pins : PAPin PAPin PAPin PAPin */
   GPIO_InitStruct.Pin = JOY_LEFT_BTN1_Pin|JOY_LEFT_BTN2_Pin|S5_2_Pin|S2_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
