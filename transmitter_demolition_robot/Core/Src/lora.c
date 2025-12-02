@@ -31,6 +31,9 @@
 #define LORA_M1_PORT      GPIOB
 
 #define LORA_MODE_SWITCH_DELAY  2    // Minimal delay for mode switching (ms)
+#define LORA_CHANNEL        23       // Channel 23 = 873.125 MHz
+#define LORA_AIR_RATE       5        // Air rate index 5 = 62.5kbps (FASTEST!)
+#define LORA_UART_RATE      3        // UART 9600 baud (index 3)
 
 /* Private macro -------------------------------------------------------------*/
 
@@ -62,12 +65,16 @@ static LoRa_Status_t LoRa_ConfigureModule(void)
     cmd[2] = 0x06;  // Length
     cmd[3] = 0x00;  // ADDH (Address High) = 0x00
     cmd[4] = 0x00;  // ADDL (Address Low) = 0x00 (Broadcast)
-    cmd[5] = 0xE5;  // REG0: UART 115200 (111) + Parity 8N1 (00) + Air rate 62.5k (101) = 0xE5
-    cmd[6] = 0xC0;  // REG1: Packet 32 bytes (11) + RSSI off (0) + Power 22dBm (00000) = 0xC0
-    cmd[7] = 0x02;  // REG2: Channel 2 (852.125 MHz)
+
+    // REG0: UART rate (bits 7-5) + Parity (bits 4-3) + Air rate (bits 2-0)
+    // UART 9600 = 011 (0x60), Parity 8N1 = 00 (0x00), Air 62.5k = 101 (0x05)
+    cmd[5] = 0x65;  // 0110 0101 = 9600 baud + 8N1 + 62.5kbps
+
+    cmd[6] = 0xC0;  // REG1: Packet 32 bytes (11) + RSSI off (0) + Power 22dBm (00000)
+    cmd[7] = LORA_CHANNEL;  // REG2: Channel 23 (873.125 MHz)
     cmd[8] = 0x00;  // REG3: Default (RSSI disabled, transparent mode)
 
-    // Send configuration via polling (DMA not available in config mode)
+    // Send configuration via polling
     if (HAL_UART_Transmit(&huart1, cmd, 9, 1000) != HAL_OK)
     {
         LoRa_SetMode(LORA_MODE_NORMAL);
@@ -144,37 +151,30 @@ void LoRa_SetMode(LoRa_Mode_t mode)
 }
 
 /**
-  * @brief  Transmit data via LoRa (non-blocking with DMA)
+  * @brief  Transmit data via LoRa (blocking mode - no DMA)
   * @param  data: Pointer to data buffer
   * @param  size: Size of data in bytes
   * @retval LoRa_Status_t
   */
 LoRa_Status_t LoRa_Transmit(uint8_t* data, uint16_t size)
 {
-    // Check if previous transmission is complete
-    if (!tx_complete)
-    {
-        return LORA_BUSY;
-    }
-
     // Check payload size
     if (size > LORA_MAX_PAYLOAD_SIZE)
     {
         return LORA_ERROR;
     }
 
-    // Mark as busy
-    tx_complete = false;
-
-    // Transmit via UART with DMA (non-blocking)
-    if (HAL_UART_Transmit_DMA(&huart1, data, size) != HAL_OK)
+    // Transmit via UART with polling (simple, no DMA)
+    if (HAL_UART_Transmit(&huart1, data, size, 100) != HAL_OK)
     {
-        tx_complete = true;
         return LORA_ERROR;
     }
 
     // Record timestamp
     last_tx_timestamp = HAL_GetTick();
+
+    // Small delay for LoRa module processing
+    HAL_Delay(10);
 
     return LORA_OK;
 }
@@ -185,7 +185,7 @@ LoRa_Status_t LoRa_Transmit(uint8_t* data, uint16_t size)
   */
 bool LoRa_IsReady(void)
 {
-    return tx_complete;
+    return true;  // Always ready in polling mode
 }
 
 /**
@@ -195,18 +195,4 @@ bool LoRa_IsReady(void)
 uint32_t LoRa_GetLastTxTime(void)
 {
     return last_tx_timestamp;
-}
-
-/**
-  * @brief  UART TX complete callback (called by HAL when DMA completes)
-  * @param  huart: UART handle
-  * @retval None
-  */
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == USART1)
-    {
-        // Mark transmission as complete
-        tx_complete = true;
-    }
 }

@@ -33,6 +33,9 @@
 
 #define LORA_MODE_SWITCH_DELAY  2    // Minimal delay for mode switching (ms)
 #define LORA_RX_BUFFER_SIZE     LORA_PACKET_SIZE
+#define LORA_CHANNEL        23       // Channel 23 = 873.125 MHz (SAME as transmitter!)
+#define LORA_AIR_RATE       5        // Air rate index 5 = 62.5kbps (FASTEST!)
+#define LORA_UART_RATE      3        // UART 9600 baud (index 3)
 
 /* Private macro -------------------------------------------------------------*/
 
@@ -66,12 +69,16 @@ static LoRa_Status_t LoRa_ConfigureModule(void)
     cmd[2] = 0x06;  // Length
     cmd[3] = 0x00;  // ADDH (Address High) = 0x00
     cmd[4] = 0x00;  // ADDL (Address Low) = 0x00 (Broadcast)
-    cmd[5] = 0xE5;  // REG0: UART 115200 (111) + Parity 8N1 (00) + Air rate 62.5k (101) = 0xE5
-    cmd[6] = 0xC0;  // REG1: Packet 32 bytes (11) + RSSI off (0) + Power 22dBm (00000) = 0xC0
-    cmd[7] = 0x02;  // REG2: Channel 2 (852.125 MHz) - MUST MATCH TRANSMITTER!
+
+    // REG0: UART rate (bits 7-5) + Parity (bits 4-3) + Air rate (bits 2-0)
+    // UART 9600 = 011 (0x60), Parity 8N1 = 00 (0x00), Air 62.5k = 101 (0x05)
+    cmd[5] = 0x65;  // 0110 0101 = 9600 baud + 8N1 + 62.5kbps
+
+    cmd[6] = 0xC0;  // REG1: Packet 32 bytes (11) + RSSI off (0) + Power 22dBm (00000)
+    cmd[7] = LORA_CHANNEL;  // REG2: Channel 23 (873.125 MHz) - MUST MATCH TRANSMITTER!
     cmd[8] = 0x00;  // REG3: Default (RSSI disabled, transparent mode)
 
-    // Send configuration via polling (DMA not available in config mode)
+    // Send configuration via polling
     if (HAL_UART_Transmit(&huart1, cmd, 9, 1000) != HAL_OK)
     {
         LoRa_SetMode(LORA_MODE_NORMAL);
@@ -94,7 +101,7 @@ static LoRa_Status_t LoRa_ConfigureModule(void)
   */
 LoRa_Status_t LoRa_Init(void)
 {
-    // Configure module to channel 2 with optimal settings (same as transmitter)
+    // Configure module to channel 23 with optimal settings (same as transmitter)
     LoRa_ConfigureModule();
 
     // Set to Normal mode (M0=0, M1=0) for reception
@@ -106,8 +113,7 @@ LoRa_Status_t LoRa_Init(void)
     new_data_flag = false;
     last_rx_timestamp = 0;
 
-    // Start DMA reception immediately
-    return LoRa_StartReceive();
+    return LORA_OK;  // Ready for polling receive
 }
 
 /**
@@ -149,18 +155,29 @@ void LoRa_SetMode(LoRa_Mode_t mode)
 }
 
 /**
-  * @brief  Start receiving data via LoRa (non-blocking with DMA)
+  * @brief  Start receiving data via LoRa (polling mode - no DMA)
   * @retval LoRa_Status_t
   */
 LoRa_Status_t LoRa_StartReceive(void)
 {
-    // Start UART DMA reception
-    if (HAL_UART_Receive_DMA(&huart1, rx_buffer, LORA_RX_BUFFER_SIZE) != HAL_OK)
+    // Receive via UART with polling (simple, blocking)
+    // Timeout 100ms - adjust if needed
+    if (HAL_UART_Receive(&huart1, rx_buffer, LORA_RX_BUFFER_SIZE, 100) == HAL_OK)
     {
-        return LORA_ERROR;
+        // Data received successfully
+        last_rx_timestamp = HAL_GetTick();
+        new_data_flag = true;
+
+        // Call user callback if registered
+        if (rx_callback != NULL)
+        {
+            rx_callback(rx_buffer, LORA_RX_BUFFER_SIZE);
+        }
+
+        return LORA_OK;
     }
 
-    return LORA_OK;
+    return LORA_TIMEOUT;  // No data received
 }
 
 /**
@@ -194,30 +211,4 @@ bool LoRa_HasNewData(void)
         return true;
     }
     return false;
-}
-
-/**
-  * @brief  UART RX complete callback (called by HAL when DMA receives data)
-  * @param  huart: UART handle
-  * @retval None
-  */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == USART1)
-    {
-        // Record timestamp
-        last_rx_timestamp = HAL_GetTick();
-
-        // Set flag
-        new_data_flag = true;
-
-        // Call user callback if registered
-        if (rx_callback != NULL)
-        {
-            rx_callback(rx_buffer, LORA_RX_BUFFER_SIZE);
-        }
-
-        // Restart reception immediately for next packet
-        HAL_UART_Receive_DMA(&huart1, rx_buffer, LORA_RX_BUFFER_SIZE);
-    }
 }
