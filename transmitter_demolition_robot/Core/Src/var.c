@@ -94,17 +94,15 @@ const char* Var_GetCSVString(void)
 {
     static char csv_buffer[150];
 
-    // Format: lx,ly,rx,ry,r8,r1,lb1,lb2,rb1,rb2,s0,s1_1,s1_2,s2_1,s2_2,s4_1,s4_2,s5_1,s5_2\r\n
+    // Format MUST match receiver: lx,ly,lb1,lb2,rx,ry,rb1,rb2,s0,s1_1,s1_2,s2_1,s2_2,s4_1,s4_2,s5_1,s5_2,r1,r8\r\n
     snprintf(csv_buffer, sizeof(csv_buffer),
              "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
              tx_data.joystick.left_x,
              tx_data.joystick.left_y,
-             tx_data.joystick.right_x,
-             tx_data.joystick.right_y,
-             tx_data.joystick.r8,
-             tx_data.joystick.r1,
              tx_data.switches.joy_left_btn1,
              tx_data.switches.joy_left_btn2,
+             tx_data.joystick.right_x,
+             tx_data.joystick.right_y,
              tx_data.switches.joy_right_btn1,
              tx_data.switches.joy_right_btn2,
              tx_data.switches.s0,
@@ -115,7 +113,9 @@ const char* Var_GetCSVString(void)
              tx_data.switches.s4_1,
              tx_data.switches.s4_2,
              tx_data.switches.s5_1,
-             tx_data.switches.s5_2);
+             tx_data.switches.s5_2,
+             tx_data.joystick.r1,
+             tx_data.joystick.r8);
 
     return csv_buffer;
 }
