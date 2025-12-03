@@ -154,9 +154,9 @@ int main(void)
 
   HAL_Delay(50);
 
-  // Send CSV header (19 fields now)
-  char *csv_header = "joy_left_x,joy_left_y,joy_left_btn1,joy_left_btn2,joy_right_x,joy_right_y,joy_right_btn1,joy_right_btn2,s0,s1_1,s1_2,s2_1,s2_2,s4_1,s4_2,s5_1,s5_2,r1,r8\r\n";
-  CDC_Transmit_FS((uint8_t*)csv_header, strlen(csv_header));
+  // Send startup info
+  char *format_msg = "Format: JL:x,y,b1,b2 JR:x,y,b1,b2 POT:R8=x,R1=x SW:S0=x,S1=xx,S2=xx,S4=xx,S5=xx\r\n\r\n";
+  CDC_Transmit_FS((uint8_t*)format_msg, strlen(format_msg));
 
   HAL_Delay(50);
 
@@ -183,10 +183,10 @@ int main(void)
       // Get received data
       if (LoRa_Receiver_GetData(&lora_data))
       {
-        // Format CSV string (19 fields)
-        char csv_buffer[200];
-        int len = snprintf(csv_buffer, sizeof(csv_buffer),
-                           "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
+        // Format human-readable string (matching transmitter format)
+        char output_buffer[200];
+        int len = snprintf(output_buffer, sizeof(output_buffer),
+                           "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%d,R1=%d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
                            lora_data.joy_left_x,
                            lora_data.joy_left_y,
                            lora_data.joy_left_btn1,
@@ -195,6 +195,8 @@ int main(void)
                            lora_data.joy_right_y,
                            lora_data.joy_right_btn1,
                            lora_data.joy_right_btn2,
+                           lora_data.r8,
+                           lora_data.r1,
                            lora_data.s0,
                            lora_data.s1_1,
                            lora_data.s1_2,
@@ -203,12 +205,10 @@ int main(void)
                            lora_data.s4_1,
                            lora_data.s4_2,
                            lora_data.s5_1,
-                           lora_data.s5_2,
-                           lora_data.r1,
-                           lora_data.r8);
+                           lora_data.s5_2);
 
         // Forward to USB CDC (non-blocking, will drop if busy)
-        CDC_Transmit_FS((uint8_t*)csv_buffer, len);
+        CDC_Transmit_FS((uint8_t*)output_buffer, len);
       }
     }
     // No delay here - check immediately for next data
