@@ -27,7 +27,7 @@ typedef enum {
 void LoRa_Init(UART_HandleTypeDef *huart, GPIO_TypeDef *m0_port, uint16_t m0_pin,
                GPIO_TypeDef *m1_port, uint16_t m1_pin);
 bool LoRa_Configure(void);
-bool LoRa_SendCSVString(const char* csv_string);  // Send CSV format string
+bool LoRa_SendBinary(const uint8_t* data, uint16_t size);  // Send binary data (FAST!)
 bool LoRa_IsReady(void);
 
 #ifdef __cplusplus

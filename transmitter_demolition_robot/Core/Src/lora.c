@@ -26,7 +26,7 @@ static bool lora_ready = false;
 // Configuration parameters (MUST BE SAME for TX and RX)
 #define LORA_ADDRESS        0x0000      // Device address
 #define LORA_CHANNEL        23          // Channel 23 = 873.125 MHz
-#define LORA_AIR_RATE       5           // Air rate 19.2kbps (FASTER! was 2)
+#define LORA_AIR_RATE       0           // Air rate 0 = 62.5kbps (FASTEST!)
 #define LORA_TX_POWER       0           // 22dBm max power
 
 /**
@@ -148,26 +148,20 @@ bool LoRa_IsReady(void)
 }
 
 /**
-  * @brief  Send CSV string directly via LoRa
-  * @param  csv_string: pointer to CSV string buffer
+  * @brief  Send binary data via LoRa (FAST! No parsing needed)
+  * @param  data: pointer to binary data buffer
+  * @param  size: size of data in bytes
   * @retval true if successful, false otherwise
   */
-bool LoRa_SendCSVString(const char* csv_string)
+bool LoRa_SendBinary(const uint8_t* data, uint16_t size)
 {
-    if (!lora_ready || csv_string == NULL || huart_lora == NULL)
+    if (!lora_ready || data == NULL || huart_lora == NULL || size == 0)
     {
         return false;
     }
 
-    uint16_t len = 0;
-    // Calculate string length (max 256 chars for safety)
-    while (csv_string[len] != '\0' && len < LORA_BUFFER_SIZE)
-    {
-        len++;
-    }
-
-    // Send via UART
-    HAL_StatusTypeDef status = HAL_UART_Transmit(huart_lora, (uint8_t*)csv_string, len, LORA_TIMEOUT);
+    // Send binary data directly via UART - NO PARSING NEEDED!
+    HAL_StatusTypeDef status = HAL_UART_Transmit(huart_lora, (uint8_t*)data, size, LORA_TIMEOUT);
 
     return (status == HAL_OK);
 }
