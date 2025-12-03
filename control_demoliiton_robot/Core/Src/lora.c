@@ -1,8 +1,8 @@
 /**
   ******************************************************************************
   * @file           : lora.c
-  * @brief          : LoRa E220-900T22D Receiver with Configuration
-  *                   RX: PA10, TX: PA9, M0: PB6, M1: PB7
+  * @brief          : LoRa E220-900T22D Receiver with Packet Sync
+  *                   RX: PA10, TX: PA9, M0: PE4, M1: PE5
   ******************************************************************************
   */
 
@@ -22,15 +22,28 @@ static LoRa_ReceivedData_t received_data;
 /* Private defines -----------------------------------------------------------*/
 #define LORA_TIMEOUT        1000
 
+// Packet synchronization
+#define PACKET_HEADER1      0xAA
+#define PACKET_HEADER2      0x55
+#define PACKET_DATA_SIZE    8
+#define PACKET_TOTAL_SIZE   (2 + PACKET_DATA_SIZE + 1)  // Header(2) + Data(8) + Checksum(1)
+
 // Configuration parameters (MUST BE SAME as transmitter)
 #define LORA_ADDRESS        0x0000      // Device address
 #define LORA_CHANNEL        23          // Channel 23 = 873.125 MHz
-#define LORA_AIR_RATE       5           // Air rate 5 = 62.5kbps (FASTEST!)
+#define LORA_AIR_RATE       5           // Air rate 5
 #define LORA_TX_POWER       0           // 22dBm max power
 
-// Binary packet receiving (8 bytes total - FAST!)
-#define PACKET_SIZE 8
-static uint8_t rx_packet[PACKET_SIZE];
+// Receiver state machine
+typedef enum {
+    RX_STATE_WAIT_HEADER1,
+    RX_STATE_WAIT_HEADER2,
+    RX_STATE_RECEIVING_DATA,
+    RX_STATE_WAIT_CHECKSUM
+} RxState_t;
+
+static RxState_t rx_state = RX_STATE_WAIT_HEADER1;
+static uint8_t rx_packet[PACKET_DATA_SIZE];
 static uint8_t rx_byte;
 static volatile uint8_t rx_count = 0;
 static volatile bool packet_ready = false;
@@ -38,6 +51,23 @@ static volatile bool packet_ready = false;
 /* Private function prototypes -----------------------------------------------*/
 static void LoRa_ParseBinaryPacket(void);
 static void LoRa_SetMode(LoRa_Mode_t mode);
+static uint8_t LoRa_CalculateChecksum(const uint8_t* data, uint16_t size);
+
+/**
+  * @brief  Calculate simple XOR checksum
+  * @param  data: pointer to data buffer
+  * @param  size: size of data
+  * @retval checksum value
+  */
+static uint8_t LoRa_CalculateChecksum(const uint8_t* data, uint16_t size)
+{
+    uint8_t checksum = 0;
+    for (uint16_t i = 0; i < size; i++)
+    {
+        checksum ^= data[i];
+    }
+    return checksum;
+}
 
 /**
   * @brief  Set LoRa module mode
@@ -64,7 +94,7 @@ static void LoRa_SetMode(LoRa_Mode_t mode)
         HAL_GPIO_WritePin(M1_Port, M1_Pin, GPIO_PIN_RESET);
     }
 
-    HAL_Delay(50); // Wait for mode change (reduced from 100ms)
+    HAL_Delay(50);
 }
 
 /**
@@ -85,9 +115,10 @@ void LoRa_Receiver_Init(UART_HandleTypeDef *huart, GPIO_TypeDef *m0_port, uint16
     M1_Port = m1_port;
     M1_Pin = m1_pin;
 
+    rx_state = RX_STATE_WAIT_HEADER1;
     rx_count = 0;
     packet_ready = false;
-    memset(rx_packet, 0, PACKET_SIZE);
+    memset(rx_packet, 0, PACKET_DATA_SIZE);
     memset(&received_data, 0, sizeof(LoRa_ReceivedData_t));
 
     if (huart_lora != NULL && M0_Port != NULL && M1_Port != NULL)
@@ -145,7 +176,7 @@ bool LoRa_Receiver_Configure(void)
     // Send configuration
     HAL_StatusTypeDef status = HAL_UART_Transmit(huart_lora, cmd_buffer, 11, LORA_TIMEOUT);
 
-    HAL_Delay(100); // Wait for configuration to be written (reduced from 200ms)
+    HAL_Delay(100);
 
     // Return to normal mode
     LoRa_SetMode(LORA_MODE_NORMAL);
@@ -199,22 +230,63 @@ bool LoRa_Receiver_GetData(LoRa_ReceivedData_t *data)
 /**
   * @brief  UART receive complete callback (called by HAL)
   * @note   This function should be called from HAL_UART_RxCpltCallback
+  * @note   Uses state machine for packet synchronization
   * @retval None
   */
 void LoRa_Receiver_IRQHandler(void)
 {
     if (huart_lora == NULL) return;
 
-    // Store received byte
-    rx_packet[rx_count++] = rx_byte;
-
-    // Check if we have complete packet (8 bytes)
-    if (rx_count >= PACKET_SIZE)
+    switch (rx_state)
     {
-        // Parse binary packet (FAST! No string parsing, direct copy)
-        LoRa_ParseBinaryPacket();
-        packet_ready = true;
-        rx_count = 0;  // Reset for next packet
+        case RX_STATE_WAIT_HEADER1:
+            if (rx_byte == PACKET_HEADER1)  // Wait for 0xAA
+            {
+                rx_state = RX_STATE_WAIT_HEADER2;
+            }
+            break;
+
+        case RX_STATE_WAIT_HEADER2:
+            if (rx_byte == PACKET_HEADER2)  // Wait for 0x55
+            {
+                rx_state = RX_STATE_RECEIVING_DATA;
+                rx_count = 0;
+            }
+            else
+            {
+                // Wrong header, go back to waiting
+                rx_state = RX_STATE_WAIT_HEADER1;
+            }
+            break;
+
+        case RX_STATE_RECEIVING_DATA:
+            // Collect 8 bytes of data
+            rx_packet[rx_count++] = rx_byte;
+
+            if (rx_count >= PACKET_DATA_SIZE)
+            {
+                rx_state = RX_STATE_WAIT_CHECKSUM;
+            }
+            break;
+
+        case RX_STATE_WAIT_CHECKSUM:
+            // Validate checksum
+            {
+                uint8_t calculated_checksum = LoRa_CalculateChecksum(rx_packet, PACKET_DATA_SIZE);
+
+                if (calculated_checksum == rx_byte)
+                {
+                    // Checksum valid! Parse packet
+                    LoRa_ParseBinaryPacket();
+                    packet_ready = true;
+                }
+                // else: Checksum invalid, discard packet
+
+                // Reset state machine for next packet
+                rx_state = RX_STATE_WAIT_HEADER1;
+                rx_count = 0;
+            }
+            break;
     }
 
     // Continue receiving next byte
@@ -224,7 +296,7 @@ void LoRa_Receiver_IRQHandler(void)
 /* Private functions ---------------------------------------------------------*/
 
 /**
-  * @brief  Parse binary packet (FAST! Direct memory copy)
+  * @brief  Parse binary packet (Direct memory copy)
   * @note   Packet format (8 bytes):
   *         Byte 0: left_x
   *         Byte 1: left_y
@@ -237,7 +309,7 @@ void LoRa_Receiver_IRQHandler(void)
   */
 static void LoRa_ParseBinaryPacket(void)
 {
-    // Direct copy from packet buffer (FAST!)
+    // Direct copy from packet buffer
     received_data.joy_left_x = rx_packet[0];
     received_data.joy_left_y = rx_packet[1];
     received_data.joy_right_x = rx_packet[2];

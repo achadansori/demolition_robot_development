@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file           : lora.c
-  * @brief          : LoRa E220-900T22D Transmitter with Configuration
+  * @brief          : LoRa E220-900T22D Transmitter with Packet Sync
   *                   TX: PA9, RX: PA10, M0: PB8, M1: PB9
   ******************************************************************************
   */
@@ -21,13 +21,38 @@ static bool lora_ready = false;
 
 /* Private defines -----------------------------------------------------------*/
 #define LORA_TIMEOUT        1000
-#define LORA_BUFFER_SIZE    256
+
+// Packet synchronization
+#define PACKET_HEADER1      0xAA
+#define PACKET_HEADER2      0x55
+#define PACKET_DATA_SIZE    8
+#define PACKET_TOTAL_SIZE   (2 + PACKET_DATA_SIZE + 1)  // Header(2) + Data(8) + Checksum(1)
 
 // Configuration parameters (MUST BE SAME for TX and RX)
 #define LORA_ADDRESS        0x0000      // Device address
 #define LORA_CHANNEL        23          // Channel 23 = 873.125 MHz
-#define LORA_AIR_RATE       5           // Air rate 5 = 62.5kbps (FASTEST!)
+#define LORA_AIR_RATE       5           // Air rate 5
 #define LORA_TX_POWER       0           // 22dBm max power
+
+/* Private function prototypes -----------------------------------------------*/
+static void LoRa_SetMode(LoRa_Mode_t mode);
+static uint8_t LoRa_CalculateChecksum(const uint8_t* data, uint16_t size);
+
+/**
+  * @brief  Calculate simple XOR checksum
+  * @param  data: pointer to data buffer
+  * @param  size: size of data
+  * @retval checksum value
+  */
+static uint8_t LoRa_CalculateChecksum(const uint8_t* data, uint16_t size)
+{
+    uint8_t checksum = 0;
+    for (uint16_t i = 0; i < size; i++)
+    {
+        checksum ^= data[i];
+    }
+    return checksum;
+}
 
 /**
   * @brief  Set LoRa module mode
@@ -54,7 +79,7 @@ static void LoRa_SetMode(LoRa_Mode_t mode)
         HAL_GPIO_WritePin(M1_Port, M1_Pin, GPIO_PIN_RESET);
     }
 
-    HAL_Delay(50); // Wait for mode change (reduced from 100ms)
+    HAL_Delay(50);
 }
 
 /**
@@ -130,7 +155,7 @@ bool LoRa_Configure(void)
     // Send configuration
     HAL_StatusTypeDef status = HAL_UART_Transmit(huart_lora, cmd_buffer, 11, LORA_TIMEOUT);
 
-    HAL_Delay(100); // Wait for configuration to be written (reduced from 200ms)
+    HAL_Delay(100);
 
     // Return to normal mode
     LoRa_SetMode(LORA_MODE_NORMAL);
@@ -148,20 +173,33 @@ bool LoRa_IsReady(void)
 }
 
 /**
-  * @brief  Send binary data via LoRa (FAST! No parsing needed)
-  * @param  data: pointer to binary data buffer
-  * @param  size: size of data in bytes
+  * @brief  Send binary data via LoRa with sync header and checksum
+  * @param  data: pointer to binary data buffer (8 bytes)
+  * @param  size: size of data in bytes (must be 8)
   * @retval true if successful, false otherwise
   */
 bool LoRa_SendBinary(const uint8_t* data, uint16_t size)
 {
-    if (!lora_ready || data == NULL || huart_lora == NULL || size == 0)
+    if (!lora_ready || data == NULL || huart_lora == NULL || size != PACKET_DATA_SIZE)
     {
         return false;
     }
 
-    // Send binary data directly via UART - NO PARSING NEEDED!
-    HAL_StatusTypeDef status = HAL_UART_Transmit(huart_lora, (uint8_t*)data, size, LORA_TIMEOUT);
+    // Create packet with header and checksum
+    uint8_t packet[PACKET_TOTAL_SIZE];
+
+    // Add header
+    packet[0] = PACKET_HEADER1;  // 0xAA
+    packet[1] = PACKET_HEADER2;  // 0x55
+
+    // Copy data
+    memcpy(&packet[2], data, PACKET_DATA_SIZE);
+
+    // Calculate and add checksum
+    packet[PACKET_TOTAL_SIZE - 1] = LoRa_CalculateChecksum(data, PACKET_DATA_SIZE);
+
+    // Send complete packet via UART
+    HAL_StatusTypeDef status = HAL_UART_Transmit(huart_lora, packet, PACKET_TOTAL_SIZE, LORA_TIMEOUT);
 
     return (status == HAL_OK);
 }

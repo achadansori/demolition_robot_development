@@ -1,0 +1,68 @@
+/**
+  ******************************************************************************
+  * @file           : lora.h (RECEIVER - FIXED)
+  * @brief          : Header for LoRa receiver (E220-900T22D)
+  ******************************************************************************
+  */
+
+#ifndef __LORA_RECEIVER_H
+#define __LORA_RECEIVER_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Includes ------------------------------------------------------------------*/
+#include "stm32f4xx_hal.h"
+#include <stdbool.h>
+
+/* Exported types ------------------------------------------------------------*/
+/**
+  * @brief  LoRa received data structure
+  * @note   CRITICAL: Data types MUST match binary packet format!
+  *         All values are uint8_t (0-255) except no exceptions
+  */
+typedef struct {
+    uint8_t joy_left_x;       // 0-255 (was uint16_t - WRONG!)
+    uint8_t joy_left_y;       // 0-255 (was uint16_t - WRONG!)
+    uint8_t joy_left_btn1;    // 0 or 1
+    uint8_t joy_left_btn2;    // 0 or 1
+    uint8_t joy_right_x;      // 0-255 (was uint16_t - WRONG!)
+    uint8_t joy_right_y;      // 0-255 (was uint16_t - WRONG!)
+    uint8_t joy_right_btn1;   // 0 or 1
+    uint8_t joy_right_btn2;   // 0 or 1
+    uint8_t s0;               // 0 or 1
+    uint8_t s1_1;             // 0 or 1
+    uint8_t s1_2;             // 0 or 1
+    uint8_t s2_1;             // 0 or 1
+    uint8_t s2_2;             // 0 or 1
+    uint8_t s4_1;             // 0 or 1
+    uint8_t s4_2;             // 0 or 1
+    uint8_t s5_1;             // 0 or 1
+    uint8_t s5_2;             // 0 or 1
+    uint8_t r1;               // 0-255 (was uint16_t - WRONG!)
+    uint8_t r8;               // 0-255 (was uint16_t - WRONG!)
+} LoRa_ReceivedData_t;
+
+typedef enum {
+    LORA_MODE_NORMAL = 0,      // M0=0, M1=0 - Normal mode
+    LORA_MODE_SLEEP            // M0=1, M1=1 - Configuration mode
+} LoRa_Mode_t;
+
+/* Exported constants --------------------------------------------------------*/
+#define LORA_RX_BUFFER_SIZE    256
+
+/* Exported functions prototypes ---------------------------------------------*/
+void LoRa_Receiver_Init(UART_HandleTypeDef *huart, GPIO_TypeDef *m0_port, uint16_t m0_pin,
+                        GPIO_TypeDef *m1_port, uint16_t m1_pin);
+bool LoRa_Receiver_Configure(void);
+void LoRa_Receiver_StartListening(void);
+bool LoRa_Receiver_IsDataAvailable(void);
+bool LoRa_Receiver_GetData(LoRa_ReceivedData_t *data);
+void LoRa_Receiver_IRQHandler(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __LORA_RECEIVER_H */

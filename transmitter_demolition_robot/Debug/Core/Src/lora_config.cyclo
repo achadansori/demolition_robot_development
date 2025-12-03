@@ -1,3 +1,0 @@
-../Core/Src/lora_config.c:38:15:LoRa_Configure	2
-../Core/Src/lora_config.c:90:15:LoRa_ReadConfig	4
-../Core/Src/lora_config.c:136:15:LoRa_SetDefaultConfig	1
