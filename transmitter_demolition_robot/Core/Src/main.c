@@ -98,19 +98,42 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+
+  // Initialize M0 and M1 GPIO pins for LoRa (PB8=M0, PB9=M1)
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;  // PB8, PB9
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   // Initialize custom modules
   Var_Init();      // Initialize data structure dan sub-modules (joystick, switch)
   USB_Init();      // Initialize USB CDC
-  LoRa_Init();     // Initialize LoRa E220 module
+
+  // Initialize LoRa E220 module with M0=PB8, M1=PB9
+  LoRa_Init(&huart1, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9);
 
   // Welcome message
   USB_Print("\r\n\r\n");
   USB_Print("========================================\r\n");
   USB_Print("   DEMOLITION ROBOT TRANSMITTER\r\n");
   USB_Print("========================================\r\n");
-  USB_Print("Data Size: 8 bytes (optimized for LoRa)\r\n");
+  USB_Print("Configuring LoRa E220...\r\n");
+
+  // Configure LoRa module
+  if (LoRa_Configure())
+  {
+      USB_Print("LoRa configured successfully!\r\n");
+  }
+  else
+  {
+      USB_Print("LoRa configuration failed!\r\n");
+  }
+
   USB_Print("LoRa E220 initialized - Ready to transmit\r\n");
   USB_Print("========================================\r\n");
+  HAL_Delay(50);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -127,7 +150,7 @@ int main(void)
     // CSV is more reliable than binary for LoRa transmission
     if (LoRa_IsReady())
     {
-        LoRa_TransmitCSV(Var_GetCSVString());
+        LoRa_SendCSVString(Var_GetCSVString());
     }
 
     // Print data ke USB untuk debugging
