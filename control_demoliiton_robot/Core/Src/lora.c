@@ -155,14 +155,14 @@ void LoRa_SetMode(LoRa_Mode_t mode)
 }
 
 /**
-  * @brief  Start receiving data via LoRa (polling mode for continuous reception)
+  * @brief  Start receiving data via LoRa (non-blocking, optimized polling)
   * @retval LoRa_Status_t
   */
 LoRa_Status_t LoRa_StartReceive(void)
 {
-    // Receive via UART with polling (optimized for continuous data stream)
-    // Short timeout for rapid polling to catch continuous transmissions
-    if (HAL_UART_Receive(&huart1, rx_buffer, LORA_RX_BUFFER_SIZE, 50) == HAL_OK)
+    // Use non-blocking receive with very short timeout (1ms)
+    // This allows rapid polling without missing continuous data
+    if (HAL_UART_Receive(&huart1, rx_buffer, LORA_RX_BUFFER_SIZE, 1) == HAL_OK)
     {
         // Data received successfully
         last_rx_timestamp = HAL_GetTick();
