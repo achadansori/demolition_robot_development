@@ -2,17 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+  * @brief          : LoRa Receiver Main Program (STM32F401CCU6)
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -20,7 +10,6 @@
 #include "main.h"
 #include "i2s.h"
 #include "spi.h"
-#include "tim.h"
 #include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
@@ -29,8 +18,8 @@
 /* USER CODE BEGIN Includes */
 #include "lora.h"
 #include "usbd_cdc_if.h"
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,9 +40,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static uint8_t rx_buffer[200];  // Buffer for CSV strings
-static uint32_t packet_count = 0;
-static uint32_t last_print_time = 0;
+LoRa_ReceivedData_t lora_data;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -66,16 +53,16 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 
 /**
-  * @brief  LoRa receive callback - called when data is received
-  * @param  data: Pointer to received data
-  * @param  size: Size of received data
+  * @brief  UART receive complete callback
+  * @param  huart: UART handle
   * @retval None
   */
-void LoRa_ReceiveCallback(uint8_t* data, uint16_t size)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    // Copy received data to buffer
-    memcpy(rx_buffer, data, size);
-    packet_count++;
+    if (huart->Instance == USART1)
+    {
+        LoRa_Receiver_IRQHandler();
+    }
 }
 
 /* USER CODE END 0 */
@@ -113,42 +100,72 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
-  MX_TIM1_Init();
-  MX_TIM2_Init();
-  MX_TIM3_Init();
-  MX_TIM4_Init();
-  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
 
+  // Initialize M0 and M1 pins for LoRa configuration
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5;  // PE4=M0, PE5=M1
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
   // Initialize LoRa receiver
-  LoRa_Init();
+  LoRa_Receiver_Init(&huart1, GPIOE, GPIO_PIN_4, GPIOE, GPIO_PIN_5);
 
-  // Register callback for received data
-  LoRa_RegisterRxCallback(LoRa_ReceiveCallback);
-
-  // Wait for USB to be ready
+  // Wait for USB to be ready (reduced from 2000ms)
   HAL_Delay(1000);
 
-  // Send startup message
-  char startup_msg[] = "\r\n========================================\r\n";
+  // Send startup message to USB
+  char *startup_msg = "\r\n=================================\r\n";
   CDC_Transmit_FS((uint8_t*)startup_msg, strlen(startup_msg));
   HAL_Delay(20);
 
-  char title_msg[] = "   LoRa RECEIVER - READY\r\n";
+  char *title_msg = "   LoRa Receiver Started\r\n";
   CDC_Transmit_FS((uint8_t*)title_msg, strlen(title_msg));
   HAL_Delay(20);
 
-  char channel_msg[] = "   Channel 23 - 873.125 MHz\r\n";
-  CDC_Transmit_FS((uint8_t*)channel_msg, strlen(channel_msg));
+  char *port_msg = "   STM32F401CCU6 - UART1\r\n";
+  CDC_Transmit_FS((uint8_t*)port_msg, strlen(port_msg));
   HAL_Delay(20);
 
-  char end_msg[] = "========================================\r\n\r\n";
+  char *pin_msg = "   RX: PA10 | TX: PA9\r\n";
+  CDC_Transmit_FS((uint8_t*)pin_msg, strlen(pin_msg));
+  HAL_Delay(20);
+
+  char *end_msg = "=================================\r\n\r\n";
   CDC_Transmit_FS((uint8_t*)end_msg, strlen(end_msg));
   HAL_Delay(50);
 
-  char waiting_msg[] = "Waiting for LoRa data...\r\n\r\n";
+  // Configure LoRa module
+  char *config_msg = "Configuring LoRa...\r\n";
+  CDC_Transmit_FS((uint8_t*)config_msg, strlen(config_msg));
+
+  if (LoRa_Receiver_Configure())
+  {
+      char *success_msg = "LoRa configured successfully!\r\n\r\n";
+      CDC_Transmit_FS((uint8_t*)success_msg, strlen(success_msg));
+  }
+  else
+  {
+      char *fail_msg = "LoRa configuration failed!\r\n\r\n";
+      CDC_Transmit_FS((uint8_t*)fail_msg, strlen(fail_msg));
+  }
+
+  HAL_Delay(50);
+
+  // Send CSV header (19 fields now)
+  char *csv_header = "joy_left_x,joy_left_y,joy_left_btn1,joy_left_btn2,joy_right_x,joy_right_y,joy_right_btn1,joy_right_btn2,s0,s1_1,s1_2,s2_1,s2_2,s4_1,s4_2,s5_1,s5_2,r1,r8\r\n";
+  CDC_Transmit_FS((uint8_t*)csv_header, strlen(csv_header));
+
+  HAL_Delay(50);
+
+  char *waiting_msg = "Waiting for LoRa data...\r\n\r\n";
   CDC_Transmit_FS((uint8_t*)waiting_msg, strlen(waiting_msg));
   HAL_Delay(50);
+
+  // Start listening for LoRa data
+  LoRa_Receiver_StartListening();
 
   /* USER CODE END 2 */
 
@@ -160,38 +177,41 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    // Continuously poll for LoRa data (ultra-fast with 1ms timeout)
-    LoRa_StartReceive();
-
-    // Check if new data received
-    if (LoRa_HasNewData())
+    // Check if new data is available
+    if (LoRa_Receiver_IsDataAvailable())
     {
-        // Print received CSV data directly (no parsing needed - FAST!)
-        // Print immediately to show real-time data
+      // Get received data
+      if (LoRa_Receiver_GetData(&lora_data))
+      {
+        // Format CSV string (19 fields)
+        char csv_buffer[200];
+        int len = snprintf(csv_buffer, sizeof(csv_buffer),
+                           "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
+                           lora_data.joy_left_x,
+                           lora_data.joy_left_y,
+                           lora_data.joy_left_btn1,
+                           lora_data.joy_left_btn2,
+                           lora_data.joy_right_x,
+                           lora_data.joy_right_y,
+                           lora_data.joy_right_btn1,
+                           lora_data.joy_right_btn2,
+                           lora_data.s0,
+                           lora_data.s1_1,
+                           lora_data.s1_2,
+                           lora_data.s2_1,
+                           lora_data.s2_2,
+                           lora_data.s4_1,
+                           lora_data.s4_2,
+                           lora_data.s5_1,
+                           lora_data.s5_2,
+                           lora_data.r1,
+                           lora_data.r8);
 
-        // Add packet counter prefix
-        char prefix[32];
-        int prefix_len = snprintf(prefix, sizeof(prefix), "[#%lu] ", packet_count);
-        CDC_Transmit_FS((uint8_t*)prefix, prefix_len);
-
-        // Send received CSV data as-is (already formatted)
-        // Find actual length (stop at null terminator)
-        uint16_t data_len = 0;
-        while (rx_buffer[data_len] != '\0' && data_len < 200)
-        {
-            data_len++;
-        }
-
-        if (data_len > 0)
-        {
-            CDC_Transmit_FS(rx_buffer, data_len);
-        }
-
-        // Throttle to avoid USB overflow (print max every 50ms)
-        HAL_Delay(50);
+        // Forward to USB CDC (non-blocking, will drop if busy)
+        CDC_Transmit_FS((uint8_t*)csv_buffer, len);
+      }
     }
-
-    // No delay - poll continuously for maximum reception speed
+    // No delay here - check immediately for next data
   }
   /* USER CODE END 3 */
 }
