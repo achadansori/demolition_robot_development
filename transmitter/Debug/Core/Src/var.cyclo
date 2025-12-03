@@ -1,0 +1,3 @@
+../Core/Src/var.c:22:6:Var_Init	1
+../Core/Src/var.c:32:6:Var_Read	3
+../Core/Src/var.c:53:17:Var_ReadChannel	4

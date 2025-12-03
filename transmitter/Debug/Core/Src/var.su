@@ -1,0 +1,3 @@
+../Core/Src/var.c:22:6:Var_Init	16	static
+../Core/Src/var.c:32:6:Var_Read	16	static
+../Core/Src/var.c:53:17:Var_ReadChannel	40	static
