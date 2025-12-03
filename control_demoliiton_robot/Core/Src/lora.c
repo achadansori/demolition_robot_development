@@ -26,9 +26,10 @@
 /* Private typedef -----------------------------------------------------------*/
 
 /* Private define ------------------------------------------------------------*/
-#define LORA_M0_PIN       GPIO_PIN_4
+// CORRECT PIN MAPPING: PE4=M1, PE5=M0 (as per hardware wiring)
+#define LORA_M0_PIN       GPIO_PIN_5
 #define LORA_M0_PORT      GPIOE
-#define LORA_M1_PIN       GPIO_PIN_5
+#define LORA_M1_PIN       GPIO_PIN_4
 #define LORA_M1_PORT      GPIOE
 
 #define LORA_MODE_SWITCH_DELAY  2    // Minimal delay for mode switching (ms)
