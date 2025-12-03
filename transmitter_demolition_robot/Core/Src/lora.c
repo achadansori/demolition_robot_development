@@ -152,7 +152,7 @@ void LoRa_SetMode(LoRa_Mode_t mode)
 }
 
 /**
-  * @brief  Transmit data via LoRa (CSV format for reliability)
+  * @brief  Transmit data via LoRa (binary format)
   * @param  data: Pointer to data buffer
   * @param  size: Size of data in bytes
   * @retval LoRa_Status_t
@@ -177,6 +177,40 @@ LoRa_Status_t LoRa_Transmit(uint8_t* data, uint16_t size)
 
     // NO DELAY - let it send continuously
     // HAL_Delay(10);
+
+    return LORA_OK;
+}
+
+/**
+  * @brief  Transmit CSV string via LoRa (proven to work, optimized)
+  * @param  csv_string: Pointer to CSV string buffer
+  * @retval LoRa_Status_t
+  */
+LoRa_Status_t LoRa_TransmitCSV(const char* csv_string)
+{
+    if (csv_string == NULL)
+    {
+        return LORA_ERROR;
+    }
+
+    uint16_t len = 0;
+    // Calculate string length (max 200 chars for safety)
+    while (csv_string[len] != '\0' && len < 200)
+    {
+        len++;
+    }
+
+    // Transmit via UART
+    if (HAL_UART_Transmit(&huart1, (uint8_t*)csv_string, len, 1000) != HAL_OK)
+    {
+        return LORA_ERROR;
+    }
+
+    // Record timestamp
+    last_tx_timestamp = HAL_GetTick();
+
+    // Small delay to prevent flooding (key optimization!)
+    HAL_Delay(5);
 
     return LORA_OK;
 }

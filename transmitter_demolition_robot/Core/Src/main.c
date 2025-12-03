@@ -123,19 +123,19 @@ int main(void)
     // Update semua data sensor
     Var_Update();
 
-    // Transmit via LoRa (non-blocking, very fast)
+    // Transmit via LoRa using CSV format (proven to work!)
+    // CSV is more reliable than binary for LoRa transmission
     if (LoRa_IsReady())
     {
-        LoRa_Transmit(Var_GetBinaryData(), Var_GetDataSize());
+        LoRa_TransmitCSV(Var_GetCSVString());
     }
 
-    // Print data ke USB untuk debugging (optional, bisa dinonaktifkan untuk performa)
+    // Print data ke USB untuk debugging
     USB_PrintData(&tx_data);
-    USB_PrintHex(Var_GetBinaryData(), Var_GetDataSize());
 
-    // Minimal delay - LoRa transmit adalah non-blocking
-    // Total cycle time < 20ms (sensor read ~5ms + LoRa air time ~1-2ms)
-    HAL_Delay(10);
+    // Delay 50ms for optimal transmission rate (20Hz update rate)
+    // This prevents LoRa flooding and gives receiver time to process
+    HAL_Delay(50);
   }
   /* USER CODE END 3 */
 }
