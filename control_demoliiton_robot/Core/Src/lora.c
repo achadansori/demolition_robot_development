@@ -17,10 +17,6 @@ static GPIO_TypeDef *M0_Port = NULL;
 static uint16_t M0_Pin = 0;
 static GPIO_TypeDef *M1_Port = NULL;
 static uint16_t M1_Pin = 0;
-static uint8_t rx_buffer[LORA_RX_BUFFER_SIZE];
-static uint8_t rx_data;
-static volatile uint16_t rx_index = 0;
-static volatile bool data_ready = false;
 static LoRa_ReceivedData_t received_data;
 
 /* Private defines -----------------------------------------------------------*/
@@ -29,11 +25,18 @@ static LoRa_ReceivedData_t received_data;
 // Configuration parameters (MUST BE SAME as transmitter)
 #define LORA_ADDRESS        0x0000      // Device address
 #define LORA_CHANNEL        23          // Channel 23 = 873.125 MHz
-#define LORA_AIR_RATE       5           // Air rate 19.2kbps (FASTER! was 2)
+#define LORA_AIR_RATE       0           // Air rate 0 = 62.5kbps (FASTEST!)
 #define LORA_TX_POWER       0           // 22dBm max power
 
+// Binary packet receiving (8 bytes total - FAST!)
+#define PACKET_SIZE 8
+static uint8_t rx_packet[PACKET_SIZE];
+static uint8_t rx_byte;
+static volatile uint8_t rx_count = 0;
+static volatile bool packet_ready = false;
+
 /* Private function prototypes -----------------------------------------------*/
-static bool LoRa_ParseCSV(char *buffer);
+static void LoRa_ParseBinaryPacket(void);
 static void LoRa_SetMode(LoRa_Mode_t mode);
 
 /**
@@ -82,9 +85,10 @@ void LoRa_Receiver_Init(UART_HandleTypeDef *huart, GPIO_TypeDef *m0_port, uint16
     M1_Port = m1_port;
     M1_Pin = m1_pin;
 
-    rx_index = 0;
-    data_ready = false;
-    memset(rx_buffer, 0, LORA_RX_BUFFER_SIZE);
+    rx_count = 0;
+    packet_ready = false;
+    memset(rx_packet, 0, PACKET_SIZE);
+    memset(&received_data, 0, sizeof(LoRa_ReceivedData_t));
 
     if (huart_lora != NULL && M0_Port != NULL && M1_Port != NULL)
     {
@@ -158,27 +162,27 @@ void LoRa_Receiver_StartListening(void)
     if (huart_lora != NULL)
     {
         // Start receiving data in interrupt mode (one byte at a time)
-        HAL_UART_Receive_IT(huart_lora, &rx_data, 1);
+        HAL_UART_Receive_IT(huart_lora, &rx_byte, 1);
     }
 }
 
 /**
-  * @brief  Check if data is available
-  * @retval true if data is ready, false otherwise
+  * @brief  Check if data packet is available
+  * @retval true if packet ready, false otherwise
   */
 bool LoRa_Receiver_IsDataAvailable(void)
 {
-    return data_ready;
+    return packet_ready;
 }
 
 /**
-  * @brief  Get received data
+  * @brief  Get received data packet
   * @param  data: pointer to LoRa_ReceivedData_t structure
   * @retval true if successful, false otherwise
   */
 bool LoRa_Receiver_GetData(LoRa_ReceivedData_t *data)
 {
-    if (!data_ready || data == NULL)
+    if (!packet_ready || data == NULL)
     {
         return false;
     }
@@ -187,7 +191,7 @@ bool LoRa_Receiver_GetData(LoRa_ReceivedData_t *data)
     memcpy(data, &received_data, sizeof(LoRa_ReceivedData_t));
 
     // Reset flag
-    data_ready = false;
+    packet_ready = false;
 
     return true;
 }
@@ -199,90 +203,61 @@ bool LoRa_Receiver_GetData(LoRa_ReceivedData_t *data)
   */
 void LoRa_Receiver_IRQHandler(void)
 {
-    if (huart_lora == NULL)
-    {
-        return;
-    }
+    if (huart_lora == NULL) return;
 
     // Store received byte
-    rx_buffer[rx_index++] = rx_data;
+    rx_packet[rx_count++] = rx_byte;
 
-    // Check for end of line (CSV format ends with \n)
-    if (rx_data == '\n' || rx_index >= LORA_RX_BUFFER_SIZE - 1)
+    // Check if we have complete packet (8 bytes)
+    if (rx_count >= PACKET_SIZE)
     {
-        // Null-terminate the string
-        rx_buffer[rx_index] = '\0';
-
-        // Parse CSV data immediately (no delay)
-        if (rx_index > 10) // Valid data check (minimal length)
-        {
-            if (LoRa_ParseCSV((char*)rx_buffer))
-            {
-                data_ready = true;
-            }
-        }
-
-        // Reset buffer index
-        rx_index = 0;
+        // Parse binary packet (FAST! No string parsing, direct copy)
+        LoRa_ParseBinaryPacket();
+        packet_ready = true;
+        rx_count = 0;  // Reset for next packet
     }
 
-    // Continue receiving next byte immediately
-    HAL_UART_Receive_IT(huart_lora, &rx_data, 1);
+    // Continue receiving next byte
+    HAL_UART_Receive_IT(huart_lora, &rx_byte, 1);
 }
 
 /* Private functions ---------------------------------------------------------*/
 
 /**
-  * @brief  Parse CSV string and extract data
-  * @param  buffer: CSV string buffer
-  * @retval true if successful, false otherwise
+  * @brief  Parse binary packet (FAST! Direct memory copy)
+  * @note   Packet format (8 bytes):
+  *         Byte 0: left_x
+  *         Byte 1: left_y
+  *         Byte 2: right_x
+  *         Byte 3: right_y
+  *         Byte 4: r8
+  *         Byte 5: r1
+  *         Byte 6-7: switches (2 bytes bit-packed)
+  * @retval None
   */
-static bool LoRa_ParseCSV(char *buffer)
+static void LoRa_ParseBinaryPacket(void)
 {
-    if (buffer == NULL)
-    {
-        return false;
-    }
+    // Direct copy from packet buffer (FAST!)
+    received_data.joy_left_x = rx_packet[0];
+    received_data.joy_left_y = rx_packet[1];
+    received_data.joy_right_x = rx_packet[2];
+    received_data.joy_right_y = rx_packet[3];
+    received_data.r8 = rx_packet[4];
+    received_data.r1 = rx_packet[5];
 
-    // Temporary storage for parsed values (19 fields now)
-    int values[19];
-    int count = 0;
-    char *token;
-
-    // Parse CSV using strtok
-    token = strtok(buffer, ",\r\n");
-    while (token != NULL && count < 19)
-    {
-        values[count++] = atoi(token);
-        token = strtok(NULL, ",\r\n");
-    }
-
-    // Check if we got all 19 values
-    if (count != 19)
-    {
-        return false;
-    }
-
-    // Store parsed data
-    received_data.joy_left_x = (uint16_t)values[0];
-    received_data.joy_left_y = (uint16_t)values[1];
-    received_data.joy_left_btn1 = (uint8_t)values[2];
-    received_data.joy_left_btn2 = (uint8_t)values[3];
-    received_data.joy_right_x = (uint16_t)values[4];
-    received_data.joy_right_y = (uint16_t)values[5];
-    received_data.joy_right_btn1 = (uint8_t)values[6];
-    received_data.joy_right_btn2 = (uint8_t)values[7];
-    received_data.s0 = (uint8_t)values[8];
-    received_data.s1_1 = (uint8_t)values[9];
-    received_data.s1_2 = (uint8_t)values[10];
-    received_data.s2_1 = (uint8_t)values[11];
-    received_data.s2_2 = (uint8_t)values[12];
-    received_data.s4_1 = (uint8_t)values[13];
-    received_data.s4_2 = (uint8_t)values[14];
-    received_data.s5_1 = (uint8_t)values[15];
-    received_data.s5_2 = (uint8_t)values[16];
-    received_data.r1 = (uint16_t)values[17];
-    received_data.r8 = (uint16_t)values[18];
-
-    return true;
+    // Extract bit-packed switches from bytes 6-7
+    uint16_t switches = (rx_packet[7] << 8) | rx_packet[6];
+    received_data.joy_left_btn1 = (switches >> 0) & 0x01;
+    received_data.joy_left_btn2 = (switches >> 1) & 0x01;
+    received_data.joy_right_btn1 = (switches >> 2) & 0x01;
+    received_data.joy_right_btn2 = (switches >> 3) & 0x01;
+    received_data.s0 = (switches >> 4) & 0x01;
+    received_data.s1_1 = (switches >> 5) & 0x01;
+    received_data.s1_2 = (switches >> 6) & 0x01;
+    received_data.s2_1 = (switches >> 7) & 0x01;
+    received_data.s2_2 = (switches >> 8) & 0x01;
+    received_data.s4_1 = (switches >> 9) & 0x01;
+    received_data.s4_2 = (switches >> 10) & 0x01;
+    received_data.s5_1 = (switches >> 11) & 0x01;
+    received_data.s5_2 = (switches >> 12) & 0x01;
 }
