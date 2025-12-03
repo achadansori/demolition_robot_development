@@ -1,6 +1,7 @@
-../Core/Src/lora.c:53:22:LoRa_ConfigureModule	24	static
-../Core/Src/lora.c:98:15:LoRa_Init	8	static
-../Core/Src/lora.c:120:6:LoRa_SetMode	16	static
-../Core/Src/lora.c:159:15:LoRa_Transmit	16	static
-../Core/Src/lora.c:187:6:LoRa_IsReady	4	static
-../Core/Src/lora.c:196:10:LoRa_GetLastTxTime	4	static
+../Core/Src/lora.c:54:22:LoRa_ConfigureModule	24	static
+../Core/Src/lora.c:99:15:LoRa_Init	8	static
+../Core/Src/lora.c:121:6:LoRa_SetMode	16	static
+../Core/Src/lora.c:160:15:LoRa_Transmit	16	static
+../Core/Src/lora.c:189:15:LoRa_TransmitCSV	24	static
+../Core/Src/lora.c:222:6:LoRa_IsReady	4	static
+../Core/Src/lora.c:231:10:LoRa_GetLastTxTime	4	static

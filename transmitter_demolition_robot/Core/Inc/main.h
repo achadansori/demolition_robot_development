@@ -95,16 +95,16 @@ void Error_Handler(void);
 #define S1_1_GPIO_Port GPIOB
 #define S1_2_Pin GPIO_PIN_5
 #define S1_2_GPIO_Port GPIOB
-#define Lora_M0_Pin GPIO_PIN_8
-#define Lora_M0_GPIO_Port GPIOB
-#define Lora_M1_Pin GPIO_PIN_9
+#define Lora_M1_Pin GPIO_PIN_8
 #define Lora_M1_GPIO_Port GPIOB
+#define Lora_M0_Pin GPIO_PIN_9
+#define Lora_M0_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 // LoRa E220 Module pins
-#define LORA_M0_Pin GPIO_PIN_8
+#define LORA_M0_Pin GPIO_PIN_9
 #define LORA_M0_GPIO_Port GPIOB
-#define LORA_M1_Pin GPIO_PIN_9
+#define LORA_M1_Pin GPIO_PIN_8
 #define LORA_M1_GPIO_Port GPIOB
 /* USER CODE END Private defines */
 
