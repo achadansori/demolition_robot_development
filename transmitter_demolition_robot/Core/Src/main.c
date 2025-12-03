@@ -147,18 +147,24 @@ int main(void)
     Var_Update();
 
     // Transmit via LoRa using CSV format (proven to work!)
-    // CSV is more reliable than binary for LoRa transmission
+    // Slower transmission rate to prevent buffer overflow
     if (LoRa_IsReady())
     {
         LoRa_SendCSVString(Var_GetCSVString());
     }
 
-    // Print data ke USB untuk debugging
-    USB_PrintData(&tx_data);
+    // Print data ke USB untuk debugging (less frequently)
+    static uint8_t usb_counter = 0;
+    if (++usb_counter >= 2)  // Print USB every 2 cycles (200ms)
+    {
+        usb_counter = 0;
+        USB_PrintData(&tx_data);
+    }
 
-    // Delay 50ms for optimal transmission rate (20Hz update rate)
-    // This prevents LoRa flooding and gives receiver time to process
-    HAL_Delay(50);
+    // Delay 100ms to give receiver time to process CSV parsing
+    // Receiver parses CSV in interrupt handler which takes ~8 seconds
+    // This slower rate prevents buffer overflow
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
