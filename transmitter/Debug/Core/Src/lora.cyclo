@@ -1,0 +1,6 @@
+../Core/Src/lora.c:37:13:LoRa_SetMode	4
+../Core/Src/lora.c:69:6:LoRa_Init	4
+../Core/Src/lora.c:91:6:LoRa_Configure	3
+../Core/Src/lora.c:145:6:LoRa_IsReady	1
+../Core/Src/lora.c:155:6:LoRa_SendData	4
+../Core/Src/lora.c:208:6:LoRa_SendCSV	6

@@ -1,0 +1,6 @@
+../Core/Src/lora.c:37:13:LoRa_SetMode	16	static
+../Core/Src/lora.c:69:6:LoRa_Init	24	static
+../Core/Src/lora.c:91:6:LoRa_Configure	24	static
+../Core/Src/lora.c:145:6:LoRa_IsReady	4	static
+../Core/Src/lora.c:155:6:LoRa_SendData	56	static
+../Core/Src/lora.c:208:6:LoRa_SendCSV	424	static
