@@ -1,6 +1,7 @@
-../Core/Src/lora.c:53:22:LoRa_ConfigureModule	2
-../Core/Src/lora.c:98:15:LoRa_Init	1
-../Core/Src/lora.c:120:6:LoRa_SetMode	5
-../Core/Src/lora.c:159:15:LoRa_Transmit	3
-../Core/Src/lora.c:187:6:LoRa_IsReady	1
-../Core/Src/lora.c:196:10:LoRa_GetLastTxTime	1
+../Core/Src/lora.c:54:22:LoRa_ConfigureModule	2
+../Core/Src/lora.c:99:15:LoRa_Init	1
+../Core/Src/lora.c:121:6:LoRa_SetMode	5
+../Core/Src/lora.c:160:15:LoRa_Transmit	3
+../Core/Src/lora.c:189:15:LoRa_TransmitCSV	5
+../Core/Src/lora.c:222:6:LoRa_IsReady	1
+../Core/Src/lora.c:231:10:LoRa_GetLastTxTime	1

@@ -1,7 +1,7 @@
-../Core/Src/lora.c:57:22:LoRa_ConfigureModule	2
-../Core/Src/lora.c:102:15:LoRa_Init	1
-../Core/Src/lora.c:124:6:LoRa_SetMode	5
-../Core/Src/lora.c:161:15:LoRa_StartReceive	3
-../Core/Src/lora.c:188:6:LoRa_RegisterRxCallback	1
-../Core/Src/lora.c:197:10:LoRa_GetLastRxTime	1
-../Core/Src/lora.c:206:6:LoRa_HasNewData	2
+../Core/Src/lora.c:58:22:LoRa_ConfigureModule	2
+../Core/Src/lora.c:103:15:LoRa_Init	1
+../Core/Src/lora.c:125:6:LoRa_SetMode	5
+../Core/Src/lora.c:162:15:LoRa_StartReceive	3
+../Core/Src/lora.c:189:6:LoRa_RegisterRxCallback	1
+../Core/Src/lora.c:198:10:LoRa_GetLastRxTime	1
+../Core/Src/lora.c:207:6:LoRa_HasNewData	2
