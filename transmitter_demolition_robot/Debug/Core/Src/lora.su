@@ -1,0 +1,6 @@
+../Core/Src/lora.c:53:22:LoRa_ConfigureModule	24	static
+../Core/Src/lora.c:98:15:LoRa_Init	8	static
+../Core/Src/lora.c:120:6:LoRa_SetMode	16	static
+../Core/Src/lora.c:159:15:LoRa_Transmit	16	static
+../Core/Src/lora.c:187:6:LoRa_IsReady	4	static
+../Core/Src/lora.c:196:10:LoRa_GetLastTxTime	4	static

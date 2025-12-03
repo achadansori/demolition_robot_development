@@ -1,0 +1,6 @@
+../Core/Src/usb.c:48:13:USB_PrintProgressBar	4
+../Core/Src/usb.c:70:6:USB_Init	1
+../Core/Src/usb.c:82:6:USB_Print	1
+../Core/Src/usb.c:94:6:USB_PrintData	1
+../Core/Src/usb.c:126:6:USB_PrintBinary	4
+../Core/Src/usb.c:172:6:USB_PrintHex	2

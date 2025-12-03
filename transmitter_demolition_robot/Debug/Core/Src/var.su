@@ -1,0 +1,4 @@
+../Core/Src/var.c:46:6:Var_Init	8	static
+../Core/Src/var.c:61:6:Var_Update	8	static
+../Core/Src/var.c:74:10:Var_GetBinaryData	4	static
+../Core/Src/var.c:83:10:Var_GetDataSize	4	static
