@@ -1,4 +1,4 @@
-../Core/Src/main.c:74:6:LoRa_ReceiveCallback	1
-../Core/Src/main.c:87:5:main	5
-../Core/Src/main.c:203:6:SystemClock_Config	3
-../Core/Src/main.c:252:6:Error_Handler	1
+../Core/Src/main.c:60:6:HAL_UART_RxCpltCallback	2
+../Core/Src/main.c:74:5:main	4
+../Core/Src/main.c:223:6:SystemClock_Config	3
+../Core/Src/main.c:272:6:Error_Handler	1

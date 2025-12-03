@@ -1,3 +1,0 @@
-../Core/Src/lora_config.c:38:15:LoRa_Configure	24	static
-../Core/Src/lora_config.c:90:15:LoRa_ReadConfig	32	static
-../Core/Src/lora_config.c:136:15:LoRa_SetDefaultConfig	16	static
