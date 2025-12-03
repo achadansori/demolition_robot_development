@@ -151,7 +151,7 @@ void LoRa_SetMode(LoRa_Mode_t mode)
 }
 
 /**
-  * @brief  Transmit data via LoRa (blocking mode - no DMA)
+  * @brief  Transmit data via LoRa (CSV format for reliability)
   * @param  data: Pointer to data buffer
   * @param  size: Size of data in bytes
   * @retval LoRa_Status_t
@@ -165,7 +165,8 @@ LoRa_Status_t LoRa_Transmit(uint8_t* data, uint16_t size)
     }
 
     // Transmit via UART with polling (simple, no DMA)
-    if (HAL_UART_Transmit(&huart1, data, size, 100) != HAL_OK)
+    // No timeout here - just send immediately
+    if (HAL_UART_Transmit(&huart1, data, size, 1000) != HAL_OK)
     {
         return LORA_ERROR;
     }
@@ -173,8 +174,8 @@ LoRa_Status_t LoRa_Transmit(uint8_t* data, uint16_t size)
     // Record timestamp
     last_tx_timestamp = HAL_GetTick();
 
-    // Small delay for LoRa module processing
-    HAL_Delay(10);
+    // NO DELAY - let it send continuously
+    // HAL_Delay(10);
 
     return LORA_OK;
 }
