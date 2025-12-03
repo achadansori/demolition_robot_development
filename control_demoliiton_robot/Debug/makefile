@@ -64,8 +64,8 @@ all: main-build
 main-build: control_demoliiton_robot.elf secondary-outputs
 
 # Tool invocations
-control_demoliiton_robot.elf control_demoliiton_robot.map: $(OBJS) $(USER_OBJS) /home/achadansori/STM32CubeIDE/workspace_1.15.1/control_demoliiton_robot/STM32F407VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "control_demoliiton_robot.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/achadansori/STM32CubeIDE/workspace_1.15.1/control_demoliiton_robot/STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="control_demoliiton_robot.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+control_demoliiton_robot.elf control_demoliiton_robot.map: $(OBJS) $(USER_OBJS) /home/achadansori/STM32CubeIDE/demolition_robot_development/control_demoliiton_robot/STM32F407VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "control_demoliiton_robot.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/achadansori/STM32CubeIDE/demolition_robot_development/control_demoliiton_robot/STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="control_demoliiton_robot.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

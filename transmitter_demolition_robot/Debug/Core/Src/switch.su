@@ -1,0 +1,3 @@
+../Core/Src/switch.c:39:6:Switch_Init	4	static
+../Core/Src/switch.c:51:6:Switch_ReadPin	24	static
+../Core/Src/switch.c:62:6:Switch_Read	16	static
