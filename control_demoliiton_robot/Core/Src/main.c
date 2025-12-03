@@ -27,7 +27,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "lora.h"
+#include "usbd_cdc_if.h"
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,7 +51,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static uint8_t rx_buffer[LORA_PACKET_SIZE];
+static uint32_t packet_count = 0;
+static uint32_t last_print_time = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -59,6 +64,19 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/**
+  * @brief  LoRa receive callback - called when data is received
+  * @param  data: Pointer to received data
+  * @param  size: Size of received data
+  * @retval None
+  */
+void LoRa_ReceiveCallback(uint8_t* data, uint16_t size)
+{
+    // Copy received data to buffer
+    memcpy(rx_buffer, data, size);
+    packet_count++;
+}
 
 /* USER CODE END 0 */
 
@@ -102,6 +120,36 @@ int main(void)
   MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
 
+  // Initialize LoRa receiver
+  LoRa_Init();
+
+  // Register callback for received data
+  LoRa_RegisterRxCallback(LoRa_ReceiveCallback);
+
+  // Wait for USB to be ready
+  HAL_Delay(1000);
+
+  // Send startup message
+  char startup_msg[] = "\r\n========================================\r\n";
+  CDC_Transmit_FS((uint8_t*)startup_msg, strlen(startup_msg));
+  HAL_Delay(20);
+
+  char title_msg[] = "   LoRa RECEIVER - READY\r\n";
+  CDC_Transmit_FS((uint8_t*)title_msg, strlen(title_msg));
+  HAL_Delay(20);
+
+  char channel_msg[] = "   Channel 23 - 873.125 MHz\r\n";
+  CDC_Transmit_FS((uint8_t*)channel_msg, strlen(channel_msg));
+  HAL_Delay(20);
+
+  char end_msg[] = "========================================\r\n\r\n";
+  CDC_Transmit_FS((uint8_t*)end_msg, strlen(end_msg));
+  HAL_Delay(50);
+
+  char waiting_msg[] = "Waiting for LoRa data...\r\n\r\n";
+  CDC_Transmit_FS((uint8_t*)waiting_msg, strlen(waiting_msg));
+  HAL_Delay(50);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -111,6 +159,40 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    // Continuously poll for LoRa data (ultra-fast with 1ms timeout)
+    LoRa_StartReceive();
+
+    // Check if new data received
+    if (LoRa_HasNewData())
+    {
+        // Print received data to USB every 200ms to avoid USB overload
+        uint32_t current_time = HAL_GetTick();
+        if (current_time - last_print_time >= 200)
+        {
+            last_print_time = current_time;
+
+            // Format output message with packet count and hex data
+            char usb_buffer[256];
+            int len = snprintf(usb_buffer, sizeof(usb_buffer),
+                             "Packet #%lu: ", packet_count);
+
+            // Add hex representation of received data
+            for (int i = 0; i < LORA_PACKET_SIZE && len < sizeof(usb_buffer) - 10; i++)
+            {
+                len += snprintf(usb_buffer + len, sizeof(usb_buffer) - len,
+                              "%02X ", rx_buffer[i]);
+            }
+
+            // Add newline
+            len += snprintf(usb_buffer + len, sizeof(usb_buffer) - len, "\r\n");
+
+            // Send to USB
+            CDC_Transmit_FS((uint8_t*)usb_buffer, len);
+        }
+    }
+
+    // No delay - poll continuously for maximum reception speed
   }
   /* USER CODE END 3 */
 }
