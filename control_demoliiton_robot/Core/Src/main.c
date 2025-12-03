@@ -51,7 +51,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static uint8_t rx_buffer[LORA_PACKET_SIZE];
+static uint8_t rx_buffer[200];  // Buffer for CSV strings
 static uint32_t packet_count = 0;
 static uint32_t last_print_time = 0;
 /* USER CODE END PV */
@@ -166,30 +166,29 @@ int main(void)
     // Check if new data received
     if (LoRa_HasNewData())
     {
-        // Print received data to USB every 200ms to avoid USB overload
-        uint32_t current_time = HAL_GetTick();
-        if (current_time - last_print_time >= 200)
+        // Print received CSV data directly (no parsing needed - FAST!)
+        // Print immediately to show real-time data
+
+        // Add packet counter prefix
+        char prefix[32];
+        int prefix_len = snprintf(prefix, sizeof(prefix), "[#%lu] ", packet_count);
+        CDC_Transmit_FS((uint8_t*)prefix, prefix_len);
+
+        // Send received CSV data as-is (already formatted)
+        // Find actual length (stop at null terminator)
+        uint16_t data_len = 0;
+        while (rx_buffer[data_len] != '\0' && data_len < 200)
         {
-            last_print_time = current_time;
-
-            // Format output message with packet count and hex data
-            char usb_buffer[256];
-            int len = snprintf(usb_buffer, sizeof(usb_buffer),
-                             "Packet #%lu: ", packet_count);
-
-            // Add hex representation of received data
-            for (int i = 0; i < LORA_PACKET_SIZE && len < sizeof(usb_buffer) - 10; i++)
-            {
-                len += snprintf(usb_buffer + len, sizeof(usb_buffer) - len,
-                              "%02X ", rx_buffer[i]);
-            }
-
-            // Add newline
-            len += snprintf(usb_buffer + len, sizeof(usb_buffer) - len, "\r\n");
-
-            // Send to USB
-            CDC_Transmit_FS((uint8_t*)usb_buffer, len);
+            data_len++;
         }
+
+        if (data_len > 0)
+        {
+            CDC_Transmit_FS(rx_buffer, data_len);
+        }
+
+        // Throttle to avoid USB overflow (print max every 50ms)
+        HAL_Delay(50);
     }
 
     // No delay - poll continuously for maximum reception speed

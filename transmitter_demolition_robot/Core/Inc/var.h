@@ -78,6 +78,7 @@ void Var_Init(void);
 void Var_Update(void);
 uint8_t* Var_GetBinaryData(void);
 uint16_t Var_GetDataSize(void);
+const char* Var_GetCSVString(void);  // Get CSV format string (proven to work)
 
 #ifdef __cplusplus
 }

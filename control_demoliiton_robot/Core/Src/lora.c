@@ -33,7 +33,7 @@
 #define LORA_M1_PORT      GPIOE
 
 #define LORA_MODE_SWITCH_DELAY  2    // Minimal delay for mode switching (ms)
-#define LORA_RX_BUFFER_SIZE     LORA_PACKET_SIZE
+#define LORA_RX_BUFFER_SIZE     200  // Buffer size for CSV strings (was LORA_PACKET_SIZE for binary)
 #define LORA_CHANNEL        23       // Channel 23 = 873.125 MHz (SAME as transmitter!)
 #define LORA_AIR_RATE       5        // Air rate index 5 = 62.5kbps (FASTEST!)
 #define LORA_UART_RATE      3        // UART 9600 baud (index 3)
@@ -156,14 +156,14 @@ void LoRa_SetMode(LoRa_Mode_t mode)
 }
 
 /**
-  * @brief  Start receiving data via LoRa (non-blocking, optimized polling)
+  * @brief  Start receiving data via LoRa (optimized for CSV strings)
   * @retval LoRa_Status_t
   */
 LoRa_Status_t LoRa_StartReceive(void)
 {
-    // Use non-blocking receive with very short timeout (1ms)
-    // This allows rapid polling without missing continuous data
-    if (HAL_UART_Receive(&huart1, rx_buffer, LORA_RX_BUFFER_SIZE, 1) == HAL_OK)
+    // Receive with longer timeout for full CSV string (100ms)
+    // CSV strings are longer than binary, need more time
+    if (HAL_UART_Receive(&huart1, rx_buffer, LORA_RX_BUFFER_SIZE, 100) == HAL_OK)
     {
         // Data received successfully
         last_rx_timestamp = HAL_GetTick();

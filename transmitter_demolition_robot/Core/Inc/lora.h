@@ -92,6 +92,13 @@ void LoRa_SetMode(LoRa_Mode_t mode);
 LoRa_Status_t LoRa_Transmit(uint8_t* data, uint16_t size);
 
 /**
+ * @brief  Transmit CSV string via LoRa
+ * @param  csv_string: Pointer to CSV string buffer
+ * @retval LoRa_Status_t
+ */
+LoRa_Status_t LoRa_TransmitCSV(const char* csv_string);
+
+/**
  * @brief  Check if transmission is complete
  * @retval true if ready, false if busy
  */
