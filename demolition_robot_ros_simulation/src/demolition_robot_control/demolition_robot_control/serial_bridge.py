@@ -23,7 +23,7 @@ class SerialBridgeNode(Node):
         super().__init__('serial_bridge')
 
         # Declare parameters
-        self.declare_parameter('port', '/dev/ttyUSB0')
+        self.declare_parameter('port', '/dev/ttyACM0')  # STM32 USB CDC
         self.declare_parameter('baudrate', 115200)
         self.declare_parameter('timeout', 0.1)
 

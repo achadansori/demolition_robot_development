@@ -2,7 +2,7 @@
   ros__parameters:
     # Serial configuration
     serial:
-      port: "/dev/ttyUSB0"
+      port: "/dev/ttyACM0"  # STM32 USB CDC (use /dev/ttyUSB0 for FTDI/CH340)
       baudrate: 115200
       timeout: 0.1
 

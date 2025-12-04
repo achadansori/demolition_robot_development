@@ -76,19 +76,26 @@ Connect ke STM32 transmitter untuk control robot real.
 
 ```bash
 # 1. Check serial port
-ls /dev/ttyUSB*   # Should show /dev/ttyUSB0 (or similar)
+ls /dev/ttyACM*   # STM32 USB CDC: Should show /dev/ttyACM0
+ls /dev/ttyUSB*   # FTDI/CH340: Should show /dev/ttyUSB0
 
 # 2. Give permission
-sudo chmod 666 /dev/ttyUSB0
+sudo chmod 666 /dev/ttyACM0   # For STM32 USB CDC
 
 # 3. Launch real robot control
 source ~/demolition_robot_development/demolition_robot_ros_simulation/install/setup.bash
-ros2 launch demolition_robot_control real_robot.launch.py port:=/dev/ttyUSB0
+ros2 launch demolition_robot_control real_robot.launch.py port:=/dev/ttyACM0
 ```
+
+**📝 Note - Serial Port Types:**
+- **`/dev/ttyACM0`** - STM32 dengan USB CDC (Virtual COM Port) ✅ Default
+- **`/dev/ttyUSB0`** - External USB-to-Serial adapter (FTDI, CH340, CP2102)
+
+Untuk STM32F407/STM32F401 dengan USB cable, gunakan `/dev/ttyACM0`.
 
 **Expected Output:**
 ```
-[serial_bridge]: Connected to STM32 transmitter on /dev/ttyUSB0 @ 115200
+[serial_bridge]: Connected to STM32 transmitter on /dev/ttyACM0 @ 115200
 [serial_bridge]: Serial Bridge Node started!
 [joy_node]: Opened joystick: /dev/input/js0
 ```
@@ -106,9 +113,10 @@ ros2 topic echo /joy
 ```
 
 **Troubleshooting:**
-- **No /dev/ttyUSB0**: Colok ulang USB cable ke STM32
-- **Permission denied**: Jalankan `sudo chmod 666 /dev/ttyUSB0`
+- **No /dev/ttyACM0**: Colok ulang USB cable ke STM32, atau cek `dmesg | tail`
+- **Permission denied**: Jalankan `sudo chmod 666 /dev/ttyACM0`
 - **No data sent**: Check joystick connected di `/dev/input/js0`
+- **Wrong port**: Kalau pakai USB-Serial adapter, gunakan `port:=/dev/ttyUSB0`
 
 ## 🔄 Mode 3: Hybrid (Real + Simulation)
 
@@ -117,7 +125,7 @@ ros2 topic echo /joy
 ```bash
 # Terminal 1: Launch hybrid mode
 source ~/demolition_robot_development/demolition_robot_ros_simulation/install/setup.bash
-ros2 launch demolition_robot_control hybrid.launch.py port:=/dev/ttyUSB0
+ros2 launch demolition_robot_control hybrid.launch.py port:=/dev/ttyACM0
 ```
 
 **Expected Output:**
@@ -175,8 +183,8 @@ Edit `~/demolition_robot_development/demolition_robot_ros_simulation/src/demolit
 
 ```yaml
 serial:
-  port: "/dev/ttyUSB0"    # Change if different
-  baudrate: 115200        # Match STM32 settings
+  port: "/dev/ttyACM0"    # STM32 USB CDC (use /dev/ttyUSB0 for FTDI/CH340)
+  baudrate: 115200        # Match STM32 settings (115200 default)
 
 control:
   deadzone: 0.1           # Joystick deadzone (0.0 - 1.0)
@@ -216,16 +224,53 @@ sudo chmod 666 /dev/input/js0  # If permission denied
 ### Problem: Serial port not found
 **Solution:**
 ```bash
-# List USB devices
-lsusb
+# Check which serial devices are available
+ls -l /dev/ttyACM*   # STM32 USB CDC
+ls -l /dev/ttyUSB*   # USB-Serial adapters
 
-# Check dmesg for USB events
-dmesg | grep tty
+# Check USB connection
+lsusb   # Should show STMicroelectronics device
+
+# Check kernel messages for device detection
+dmesg | tail -20
+
+# Look for:
+# [12345.678] usb 1-1: new full-speed USB device
+# [12345.679] cdc_acm 1-1:1.0: ttyACM0: USB ACM device
 
 # Add user to dialout group (for permanent access)
 sudo usermod -a -G dialout $USER
-# Logout and login again
+# Logout and login again for changes to take effect
 ```
+
+**📝 Understanding Serial Ports:**
+
+| Port Type | Device | Use Case | Example |
+|-----------|--------|----------|---------|
+| `/dev/ttyACM0` | STM32 USB CDC | Direct USB connection | STM32F407/F401 USB cable |
+| `/dev/ttyUSB0` | USB-Serial Adapter | External converter | FTDI, CH340, CP2102 |
+
+**Common Issues:**
+- **STM32 tidak terdeteksi**:
+  - Pastikan USB cable support data (bukan charge-only)
+  - Check STM32 USB_DEVICE initialized di firmware
+  - Coba port USB lain
+
+- **Permission denied setelah reboot**:
+  ```bash
+  # Permanent solution - add udev rule
+  echo 'KERNEL=="ttyACM[0-9]*", MODE="0666"' | sudo tee /etc/udev/rules.d/50-stm32.rules
+  sudo udevadm control --reload-rules
+  ```
+
+- **Port berubah (ttyACM0 → ttyACM1)**:
+  - Unplug semua USB serial devices
+  - Plug STM32 pertama kali → akan jadi ttyACM0
+  - Atau gunakan symlink by-id:
+  ```bash
+  ls -l /dev/serial/by-id/
+  # Use full path in launch: port:=/dev/serial/by-id/usb-STM...
+  ```
 
 ### Problem: Robot moving in simulation but not real
 **Solution:**
@@ -253,10 +298,10 @@ colcon build
 source install/setup.bash
 
 # 2. Connect STM32 transmitter
-sudo chmod 666 /dev/ttyUSB0
+sudo chmod 666 /dev/ttyACM0
 
 # 3. Launch hybrid mode
-ros2 launch demolition_robot_control hybrid.launch.py port:=/dev/ttyUSB0
+ros2 launch demolition_robot_control hybrid.launch.py port:=/dev/ttyACM0
 
 # 4. In another terminal, monitor data
 ros2 topic echo /robot/serial_tx

@@ -27,7 +27,7 @@ def generate_launch_description():
 
     # Launch configuration
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
-    port = LaunchConfiguration('port', default='/dev/ttyUSB0')
+    port = LaunchConfiguration('port', default='/dev/ttyACM0')  # STM32 USB CDC
     baudrate = LaunchConfiguration('baudrate', default='115200')
 
     # Include robot description launch (visualization)
@@ -69,8 +69,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
-        DeclareLaunchArgument('port', default_value='/dev/ttyUSB0',
-                              description='Serial port for STM32 transmitter'),
+        DeclareLaunchArgument('port', default_value='/dev/ttyACM0',
+                              description='Serial port for STM32 transmitter (USB CDC)'),
         DeclareLaunchArgument('baudrate', default_value='115200',
                               description='Serial baudrate'),
         robot_description_launch,
