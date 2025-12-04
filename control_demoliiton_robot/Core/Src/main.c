@@ -183,35 +183,44 @@ int main(void)
       // Get received data
       if (LoRa_Receiver_GetData(&lora_data))
       {
-        // Format human-readable string (matching transmitter format)
-        char output_buffer[200];
-        int len = snprintf(output_buffer, sizeof(output_buffer),
-                           "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%d,R1=%d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
-                           lora_data.joy_left_x,
-                           lora_data.joy_left_y,
-                           lora_data.joy_left_btn1,
-                           lora_data.joy_left_btn2,
-                           lora_data.joy_right_x,
-                           lora_data.joy_right_y,
-                           lora_data.joy_right_btn1,
-                           lora_data.joy_right_btn2,
-                           lora_data.r8,
-                           lora_data.r1,
-                           lora_data.s0,
-                           lora_data.s1_1,
-                           lora_data.s1_2,
-                           lora_data.s2_1,
-                           lora_data.s2_2,
-                           lora_data.s4_1,
-                           lora_data.s4_2,
-                           lora_data.s5_1,
-                           lora_data.s5_2);
+        // Print to USB less frequently to avoid blocking
+        // USB CDC_Transmit is SLOW and can cause delay if called too often
+        static uint8_t usb_counter = 0;
+        if (++usb_counter >= 3)  // Print USB every 3 packets (150ms) to reduce blocking
+        {
+          usb_counter = 0;
 
-        // Forward to USB CDC (non-blocking, will drop if busy)
-        CDC_Transmit_FS((uint8_t*)output_buffer, len);
+          // Format human-readable string (matching transmitter format)
+          char output_buffer[200];
+          int len = snprintf(output_buffer, sizeof(output_buffer),
+                             "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%d,R1=%d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
+                             lora_data.joy_left_x,
+                             lora_data.joy_left_y,
+                             lora_data.joy_left_btn1,
+                             lora_data.joy_left_btn2,
+                             lora_data.joy_right_x,
+                             lora_data.joy_right_y,
+                             lora_data.joy_right_btn1,
+                             lora_data.joy_right_btn2,
+                             lora_data.r8,
+                             lora_data.r1,
+                             lora_data.s0,
+                             lora_data.s1_1,
+                             lora_data.s1_2,
+                             lora_data.s2_1,
+                             lora_data.s2_2,
+                             lora_data.s4_1,
+                             lora_data.s4_2,
+                             lora_data.s5_1,
+                             lora_data.s5_2);
+
+          // Forward to USB CDC (print every 3rd packet to reduce blocking delay)
+          CDC_Transmit_FS((uint8_t*)output_buffer, len);
+        }
+        // Data is still received every 50ms via LoRa - just not printed every time
       }
     }
-    // No delay here - check immediately for next data
+    // No delay here - process LoRa data immediately without blocking
   }
   /* USER CODE END 3 */
 }
