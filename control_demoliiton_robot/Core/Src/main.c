@@ -186,7 +186,7 @@ int main(void)
         // Print to USB less frequently to avoid blocking
         // USB CDC_Transmit is SLOW and can cause delay if called too often
         static uint8_t usb_counter = 0;
-        if (++usb_counter >= 3)  // Print USB every 3 packets (150ms) to reduce blocking
+        if (++usb_counter >= 10)  // Print USB every 10 packets (500ms) to minimize blocking
         {
           usb_counter = 0;
 
@@ -214,10 +214,10 @@ int main(void)
                              lora_data.s5_1,
                              lora_data.s5_2);
 
-          // Forward to USB CDC (print every 3rd packet to reduce blocking delay)
+          // Forward to USB CDC (print every 10th packet to minimize blocking delay)
           CDC_Transmit_FS((uint8_t*)output_buffer, len);
         }
-        // Data is still received every 50ms via LoRa - just not printed every time
+        // Data is still received every 50ms via LoRa realtime - just not printed every time
       }
     }
     // No delay here - process LoRa data immediately without blocking
