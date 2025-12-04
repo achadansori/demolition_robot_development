@@ -11,10 +11,10 @@
 #include <string.h>
 
 /* Private defines -----------------------------------------------------------*/
-#define PWM_FREQUENCY       50      // 50Hz for servo/hydraulic control
-#define PWM_PERIOD          20000   // 20ms period (50Hz)
-#define PWM_MIN_PULSE       1000    // 1ms minimum pulse
-#define PWM_MAX_PULSE       2000    // 2ms maximum pulse
+#define PWM_FREQUENCY       10000   // 10kHz for TIP122 transistor switching (visible on oscilloscope)
+#define PWM_PERIOD          100     // 100us period (10kHz)
+#define PWM_MIN_PULSE       0       // 0% duty = 0V
+#define PWM_MAX_PULSE       100     // 100% duty = 3.3V average
 
 /* Private variables ---------------------------------------------------------*/
 static uint8_t pwm_duty[PWM_CHANNEL_COUNT] = {0};
@@ -101,25 +101,25 @@ static void PWM_ConfigureTimers(void)
     __HAL_RCC_TIM4_CLK_ENABLE();
     __HAL_RCC_TIM8_CLK_ENABLE();
 
-    // Common timer configuration (50Hz PWM)
+    // Common timer configuration (10kHz PWM for TIP122 switching)
     // Assuming system clock is 84MHz for APB2 timers (TIM1, TIM8)
     // and 42MHz for APB1 timers (TIM2, TIM3, TIM4)
 
-    // Configure TIM1 (84MHz / 84 = 1MHz, 1MHz / 50Hz = 20000)
+    // Configure TIM1 (84MHz / 84 = 1MHz, 1MHz / 10kHz = 100)
     htim1.Instance = TIM1;
     htim1.Init.Prescaler = 83;  // 84MHz / 84 = 1MHz
     htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim1.Init.Period = PWM_PERIOD - 1;  // 20000 - 1
+    htim1.Init.Period = PWM_PERIOD - 1;  // 100 - 1 = 99
     htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim1.Init.RepetitionCounter = 0;
     HAL_TIM_Base_Init(&htim1);
     HAL_TIM_PWM_Init(&htim1);
 
-    // Configure TIM2, TIM3, TIM4 (42MHz / 42 = 1MHz, 1MHz / 50Hz = 20000)
+    // Configure TIM2, TIM3, TIM4 (42MHz / 42 = 1MHz, 1MHz / 10kHz = 100)
     htim2.Instance = TIM2;
     htim2.Init.Prescaler = 41;  // 42MHz / 42 = 1MHz
     htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim2.Init.Period = PWM_PERIOD - 1;
+    htim2.Init.Period = PWM_PERIOD - 1;  // 100 - 1 = 99
     htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     HAL_TIM_Base_Init(&htim2);
     HAL_TIM_PWM_Init(&htim2);
@@ -140,7 +140,7 @@ static void PWM_ConfigureTimers(void)
     HAL_TIM_Base_Init(&htim4);
     HAL_TIM_PWM_Init(&htim4);
 
-    // Configure TIM8 (84MHz / 84 = 1MHz)
+    // Configure TIM8 (84MHz / 84 = 1MHz, 1MHz / 10kHz = 100)
     htim8.Instance = TIM8;
     htim8.Init.Prescaler = 83;
     htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -214,6 +214,12 @@ static void PWM_ConfigureTimers(void)
   * @param  channel: PWM channel
   * @param  duty_percent: Duty cycle in percentage (0-100)
   * @retval None
+  *
+  * @note   For TIP122 transistor switching:
+  *         - 0% duty   = 0V average (TIP122 OFF, no current to base)
+  *         - 50% duty  = ~1.65V average (TIP122 half power)
+  *         - 100% duty = 3.3V average (TIP122 fully ON)
+  *         - PWM @ 10kHz will be clearly visible on oscilloscope
   */
 void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
 {
@@ -223,8 +229,9 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
     // Store duty cycle
     pwm_duty[channel] = duty_percent;
 
-    // Calculate pulse width (1ms to 2ms for 0-100%)
-    uint16_t pulse_width = PWM_MIN_PULSE + ((PWM_MAX_PULSE - PWM_MIN_PULSE) * duty_percent / 100);
+    // Calculate pulse width directly from duty cycle
+    // duty_percent 0-100 maps directly to CCR value 0-100
+    uint16_t pulse_width = duty_percent;
 
     // Set channel pulse
     PWM_SetChannelPulse(channel, pulse_width);
