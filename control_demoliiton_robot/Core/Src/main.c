@@ -17,6 +17,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "lora.h"
+#include "control.h"
 #include "usbd_cdc_if.h"
 #include <stdio.h>
 #include <string.h>
@@ -167,6 +168,13 @@ int main(void)
   // Start listening for LoRa data
   LoRa_Receiver_StartListening();
 
+  // Initialize control system (PWM outputs)
+  Control_Init();
+
+  char *control_msg = "Control system initialized - Ready!\r\n\r\n";
+  CDC_Transmit_FS((uint8_t*)control_msg, strlen(control_msg));
+  HAL_Delay(50);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -183,6 +191,9 @@ int main(void)
       // Get received data
       if (LoRa_Receiver_GetData(&lora_data))
       {
+        // Update control outputs based on received data
+        Control_Update(&lora_data);
+
         // Print to USB less frequently to avoid blocking
         // USB CDC_Transmit is SLOW and can cause delay if called too often
         static uint8_t usb_counter = 0;
