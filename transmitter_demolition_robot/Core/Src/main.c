@@ -155,15 +155,15 @@ int main(void)
 
     // Print data ke USB untuk debugging (less frequently)
     static uint8_t usb_counter = 0;
-    if (++usb_counter >= 5)  // Print USB every 5 cycles (250ms)
+    if (++usb_counter >= 5)  // Print USB every 5 cycles (500ms)
     {
         usb_counter = 0;
         USB_PrintData(&tx_data);
     }
 
-    // Delay 50ms for fast transmission rate (20Hz update rate)
-    // Binary format is fast so we can go back to 50ms
-    HAL_Delay(50);
+    // Delay 100ms for stable transmission (10Hz update rate)
+    // Slower rate = more time for LoRa to process, reduces delay
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
