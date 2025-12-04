@@ -1,0 +1,417 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="brokk_demolition_robot">
+
+  <!-- Material definitions -->
+  <material name="orange">
+    <color rgba="1.0 0.5 0.0 1.0"/>
+  </material>
+
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+
+  <material name="yellow">
+    <color rgba="1.0 0.9 0.0 1.0"/>
+  </material>
+
+  <material name="grey">
+    <color rgba="0.5 0.5 0.5 1.0"/>
+  </material>
+
+  <!-- ================================================================ -->
+  <!-- BASE CHASSIS -->
+  <!-- ================================================================ -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="1.2 0.8 0.3"/>
+      </geometry>
+      <origin xyz="0 0 0.15" rpy="0 0 0"/>
+      <material name="orange"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="1.2 0.8 0.3"/>
+      </geometry>
+      <origin xyz="0 0 0.15" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="500.0"/>
+      <origin xyz="0 0 0.15" rpy="0 0 0"/>
+      <inertia ixx="20.0" ixy="0.0" ixz="0.0"
+               iyy="30.0" iyz="0.0" izz="40.0"/>
+    </inertial>
+  </link>
+
+  <!-- ================================================================ -->
+  <!-- TRACKS (Cylinder 9 & 10: Left/Right Track) -->
+  <!-- ================================================================ -->
+
+  <!-- Left Track -->
+  <link name="track_left">
+    <visual>
+      <geometry>
+        <box size="1.0 0.25 0.2"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="1.0 0.25 0.2"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="50.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0"
+               iyy="2.0" iyz="0.0" izz="2.0"/>
+    </inertial>
+  </link>
+
+  <joint name="track_left_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="track_left"/>
+    <origin xyz="0 0.525 0.05" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <dynamics damping="10.0" friction="5.0"/>
+  </joint>
+
+  <!-- Right Track -->
+  <link name="track_right">
+    <visual>
+      <geometry>
+        <box size="1.0 0.25 0.2"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="1.0 0.25 0.2"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="50.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0"
+               iyy="2.0" iyz="0.0" izz="2.0"/>
+    </inertial>
+  </link>
+
+  <joint name="track_right_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="track_right"/>
+    <origin xyz="0 -0.525 0.05" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <dynamics damping="10.0" friction="5.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- OUTRIGGERS (Cylinder 7 & 8: Left/Right Outrigger) -->
+  <!-- ================================================================ -->
+
+  <!-- Left Outrigger -->
+  <link name="outrigger_left">
+    <visual>
+      <geometry>
+        <cylinder radius="0.05" length="0.6"/>
+      </geometry>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.05" length="0.6"/>
+      </geometry>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="20.0"/>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+      <inertia ixx="0.5" ixy="0.0" ixz="0.0"
+               iyy="0.5" iyz="0.0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <joint name="outrigger_left_joint" type="prismatic">
+    <parent link="base_link"/>
+    <child link="outrigger_left"/>
+    <origin xyz="-0.4 0.4 0.3" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.5" effort="5000.0" velocity="0.2"/>
+    <dynamics damping="50.0" friction="10.0"/>
+  </joint>
+
+  <!-- Right Outrigger -->
+  <link name="outrigger_right">
+    <visual>
+      <geometry>
+        <cylinder radius="0.05" length="0.6"/>
+      </geometry>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.05" length="0.6"/>
+      </geometry>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="20.0"/>
+      <origin xyz="0 0 -0.3" rpy="0 0 0"/>
+      <inertia ixx="0.5" ixy="0.0" ixz="0.0"
+               iyy="0.5" iyz="0.0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <joint name="outrigger_right_joint" type="prismatic">
+    <parent link="base_link"/>
+    <child link="outrigger_right"/>
+    <origin xyz="-0.4 -0.4 0.3" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.5" effort="5000.0" velocity="0.2"/>
+    <dynamics damping="50.0" friction="10.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- SLEW PLATFORM (Cylinder 6: Slew rotation) -->
+  <!-- ================================================================ -->
+  <link name="slew_platform">
+    <visual>
+      <geometry>
+        <cylinder radius="0.35" length="0.25"/>
+      </geometry>
+      <origin xyz="0 0 0.125" rpy="0 0 0"/>
+      <material name="yellow"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.35" length="0.25"/>
+      </geometry>
+      <origin xyz="0 0 0.125" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="200.0"/>
+      <origin xyz="0 0 0.125" rpy="0 0 0"/>
+      <inertia ixx="5.0" ixy="0.0" ixz="0.0"
+               iyy="5.0" iyz="0.0" izz="8.0"/>
+    </inertial>
+  </link>
+
+  <joint name="slew_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="slew_platform"/>
+    <origin xyz="0.2 0 0.3" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="20.0" friction="5.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- BOOM (Cylinder 1: First arm segment) -->
+  <!-- ================================================================ -->
+  <link name="boom">
+    <visual>
+      <geometry>
+        <box size="0.2 0.2 1.5"/>
+      </geometry>
+      <origin xyz="0 0 0.75" rpy="0 0 0"/>
+      <material name="orange"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.2 0.2 1.5"/>
+      </geometry>
+      <origin xyz="0 0 0.75" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="150.0"/>
+      <origin xyz="0 0 0.75" rpy="0 0 0"/>
+      <inertia ixx="30.0" ixy="0.0" ixz="0.0"
+               iyy="30.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <joint name="boom_joint" type="revolute">
+    <parent link="slew_platform"/>
+    <child link="boom"/>
+    <origin xyz="0.15 0 0.25" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.5" upper="1.57" effort="10000.0" velocity="0.5"/>
+    <dynamics damping="50.0" friction="10.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- STICK (Cylinder 2: Second arm segment) -->
+  <!-- ================================================================ -->
+  <link name="stick">
+    <visual>
+      <geometry>
+        <box size="0.15 0.15 1.2"/>
+      </geometry>
+      <origin xyz="0 0 0.6" rpy="0 0 0"/>
+      <material name="orange"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.15 0.15 1.2"/>
+      </geometry>
+      <origin xyz="0 0 0.6" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="100.0"/>
+      <origin xyz="0 0 0.6" rpy="0 0 0"/>
+      <inertia ixx="15.0" ixy="0.0" ixz="0.0"
+               iyy="15.0" iyz="0.0" izz="0.5"/>
+    </inertial>
+  </link>
+
+  <joint name="stick_joint" type="revolute">
+    <parent link="boom"/>
+    <child link="stick"/>
+    <origin xyz="0 0 1.5" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="0.5" effort="8000.0" velocity="0.5"/>
+    <dynamics damping="40.0" friction="8.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- BUCKET ATTACHMENT (Cylinder 3: Bucket tilt) -->
+  <!-- ================================================================ -->
+  <link name="bucket">
+    <visual>
+      <geometry>
+        <box size="0.3 0.4 0.5"/>
+      </geometry>
+      <origin xyz="0.15 0 0" rpy="0 0 0"/>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.3 0.4 0.5"/>
+      </geometry>
+      <origin xyz="0.15 0 0" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="80.0"/>
+      <origin xyz="0.15 0 0" rpy="0 0 0"/>
+      <inertia ixx="2.0" ixy="0.0" ixz="0.0"
+               iyy="3.0" iyz="0.0" izz="2.0"/>
+    </inertial>
+  </link>
+
+  <joint name="bucket_joint" type="revolute">
+    <parent link="stick"/>
+    <child link="bucket"/>
+    <origin xyz="0 0 1.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5000.0" velocity="0.8"/>
+    <dynamics damping="30.0" friction="5.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- TOOL ROTATION (Cylinder 4: Tool/bucket rotation around vertical axis) -->
+  <!-- ================================================================ -->
+  <link name="tool_rotator">
+    <visual>
+      <geometry>
+        <cylinder radius="0.08" length="0.15"/>
+      </geometry>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <material name="yellow"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.08" length="0.15"/>
+      </geometry>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="30.0"/>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <inertia ixx="0.5" ixy="0.0" ixz="0.0"
+               iyy="0.5" iyz="0.0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <joint name="tool_rotation_joint" type="revolute">
+    <parent link="bucket"/>
+    <child link="tool_rotator"/>
+    <origin xyz="0.3 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-3.14" upper="3.14" effort="3000.0" velocity="1.0"/>
+    <dynamics damping="20.0" friction="3.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- TOOL 1 (Cylinder 5: Gripper/crusher jaw 1) -->
+  <!-- ================================================================ -->
+  <link name="tool_jaw_1">
+    <visual>
+      <geometry>
+        <box size="0.4 0.08 0.15"/>
+      </geometry>
+      <origin xyz="0.2 0.1 0" rpy="0 0 0"/>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.4 0.08 0.15"/>
+      </geometry>
+      <origin xyz="0.2 0.1 0" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="25.0"/>
+      <origin xyz="0.2 0.1 0" rpy="0 0 0"/>
+      <inertia ixx="0.2" ixy="0.0" ixz="0.0"
+               iyy="0.5" iyz="0.0" izz="0.5"/>
+    </inertial>
+  </link>
+
+  <joint name="tool_jaw_1_joint" type="revolute">
+    <parent link="tool_rotator"/>
+    <child link="tool_jaw_1"/>
+    <origin xyz="0 0 0.15" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.5" upper="0.8" effort="4000.0" velocity="0.5"/>
+    <dynamics damping="15.0" friction="5.0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!-- TOOL 2 (Jaw 2 mirrors Jaw 1 for crusher/gripper) -->
+  <!-- ================================================================ -->
+  <link name="tool_jaw_2">
+    <visual>
+      <geometry>
+        <box size="0.4 0.08 0.15"/>
+      </geometry>
+      <origin xyz="0.2 -0.1 0" rpy="0 0 0"/>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.4 0.08 0.15"/>
+      </geometry>
+      <origin xyz="0.2 -0.1 0" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="25.0"/>
+      <origin xyz="0.2 -0.1 0" rpy="0 0 0"/>
+      <inertia ixx="0.2" ixy="0.0" ixz="0.0"
+               iyy="0.5" iyz="0.0" izz="0.5"/>
+    </inertial>
+  </link>
+
+  <joint name="tool_jaw_2_joint" type="revolute">
+    <parent link="tool_rotator"/>
+    <child link="tool_jaw_2"/>
+    <origin xyz="0 0 0.15" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.8" upper="0.5" effort="4000.0" velocity="0.5"/>
+    <dynamics damping="15.0" friction="5.0"/>
+  </joint>
+
+</robot>
