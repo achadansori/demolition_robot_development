@@ -9,6 +9,8 @@
 		<item key="SmartImportRootWizardPage.STORE_NESTED_PROJECTS" value="true"/>
 		<item key="SmartImportRootWizardPage.STORE_CONFIGURE_NATURES" value="true"/>
 		<list key="org.eclipse.ui.internal.wizards.datatransfer.SmartImportRootWizardPage.knownSources">
+			<item value="/home/achadansori/STM32CubeIDE/demolition_robot_development/control_demolition_robot_csv"/>
+			<item value="/home/achadansori/STM32CubeIDE/demolition_robot_development/transmitter_demolition_robot_csv"/>
 			<item value="/home/achadansori/STM32CubeIDE/demolition_robot_development/control_demoliiton_robot"/>
 			<item value="/home/achadansori/STM32CubeIDE/demolition_robot_development/transmitter_demolition_robot"/>
 		</list>
