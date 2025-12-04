@@ -304,7 +304,7 @@ static void PWM_SetChannelPulse(PWM_Channel_t channel, uint16_t pulse_width)
         case PWM_8_CYLINDER_4_IN:
             __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse_width);
             break;
-        case PWM_15_OUTRIGGER_BACK_UP:
+        case PWM_15_OUTRIGGER_RIGHT_UP:
             __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pulse_width);
             break;
 
@@ -318,7 +318,7 @@ static void PWM_SetChannelPulse(PWM_Channel_t channel, uint16_t pulse_width)
         case PWM_9_TOOL_1:
             __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, pulse_width);
             break;
-        case PWM_14_OUTRIGGER_FRONT_DOWN:
+        case PWM_14_OUTRIGGER_LEFT_DOWN:
             __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse_width);
             break;
 
@@ -329,7 +329,7 @@ static void PWM_SetChannelPulse(PWM_Channel_t channel, uint16_t pulse_width)
         case PWM_12_SLEW_CCW:
             __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, pulse_width);
             break;
-        case PWM_13_OUTRIGGER_FRONT_UP:
+        case PWM_13_OUTRIGGER_LEFT_UP:
             __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, pulse_width);
             break;
         case PWM_19_TRACK_LEFT_FORWARD:
@@ -337,7 +337,7 @@ static void PWM_SetChannelPulse(PWM_Channel_t channel, uint16_t pulse_width)
             break;
 
         // TIM1 channels
-        case PWM_16_OUTRIGGER_BACK_DOWN:
+        case PWM_16_OUTRIGGER_RIGHT_DOWN:
             __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pulse_width);
             break;
         case PWM_17_TRACK_RIGHT_FORWARD:
