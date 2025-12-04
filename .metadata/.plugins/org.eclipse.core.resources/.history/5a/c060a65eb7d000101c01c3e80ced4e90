@@ -230,7 +230,7 @@ bool LoRa_Receiver_GetData(LoRa_ReceivedData_t *data)
 /**
   * @brief  UART receive complete callback (called by HAL)
   * @note   This function should be called from HAL_UART_RxCpltCallback
-  * @note   Uses state machine for packet synchronization
+  * @note   Uses state machine for packet synchronization with checksum validation
   * @retval None
   */
 void LoRa_Receiver_IRQHandler(void)
@@ -265,6 +265,7 @@ void LoRa_Receiver_IRQHandler(void)
 
             if (rx_count >= PACKET_DATA_SIZE)
             {
+                // All 8 bytes received, now wait for checksum
                 rx_state = RX_STATE_WAIT_CHECKSUM;
             }
             break;
@@ -280,7 +281,7 @@ void LoRa_Receiver_IRQHandler(void)
                     LoRa_ParseBinaryPacket();
                     packet_ready = true;
                 }
-                // else: Checksum invalid, discard packet
+                // else: Checksum invalid, discard packet silently
 
                 // Reset state machine for next packet
                 rx_state = RX_STATE_WAIT_HEADER1;
