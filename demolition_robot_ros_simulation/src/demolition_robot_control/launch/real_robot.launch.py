@@ -20,7 +20,7 @@ def generate_launch_description():
     control_pkg = get_package_share_directory('demolition_robot_control')
 
     # Launch arguments
-    port = LaunchConfiguration('port', default='/dev/ttyUSB0')
+    port = LaunchConfiguration('port', default='/dev/ttyACM0')  # STM32 USB CDC
     baudrate = LaunchConfiguration('baudrate', default='115200')
 
     # Serial bridge node
@@ -44,8 +44,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        DeclareLaunchArgument('port', default_value='/dev/ttyUSB0',
-                              description='Serial port for STM32 transmitter'),
+        DeclareLaunchArgument('port', default_value='/dev/ttyACM0',
+                              description='Serial port for STM32 transmitter (USB CDC)'),
         DeclareLaunchArgument('baudrate', default_value='115200',
                               description='Serial baudrate'),
         serial_bridge,

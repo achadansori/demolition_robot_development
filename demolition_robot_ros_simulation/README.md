@@ -61,17 +61,19 @@ ros2 run joy joy_node  # Jika pakai gamepad
 
 ```bash
 # Terminal 1: Serial bridge ke STM32 transmitter
-ros2 launch demolition_robot_bringup real_robot.launch.py port:=/dev/ttyUSB0
+ros2 launch demolition_robot_bringup real_robot.launch.py port:=/dev/ttyACM0
 
 # Terminal 2 (Optional): Monitor data
 ros2 topic echo /robot/state
 ```
 
+**Note:** STM32 USB CDC biasanya muncul sebagai `/dev/ttyACM0`. Jika pakai USB-to-Serial adapter (FTDI/CH340), gunakan `/dev/ttyUSB0`.
+
 ### 4. Run Hybrid Mode (Real + Simulation)
 
 ```bash
 # Kedua mode aktif - joystick control ke real robot DAN simulasi
-ros2 launch demolition_robot_bringup hybrid.launch.py port:=/dev/ttyUSB0
+ros2 launch demolition_robot_bringup hybrid.launch.py port:=/dev/ttyACM0
 ```
 
 ## 📡 Topics
@@ -106,7 +108,7 @@ Edit `demolition_robot_control/config/robot_params.yaml`:
 
 ```yaml
 serial:
-  port: "/dev/ttyUSB0"
+  port: "/dev/ttyACM0"  # STM32 USB CDC (use /dev/ttyUSB0 for FTDI/CH340)
   baudrate: 115200
   timeout: 0.1
 
