@@ -26,7 +26,7 @@ static LoRa_ReceivedData_t received_data;
 #define PACKET_HEADER1      0xAA
 #define PACKET_HEADER2      0x55
 #define PACKET_DATA_SIZE    8
-#define PACKET_TOTAL_SIZE   (2 + PACKET_DATA_SIZE + 1)  // Header(2) + Data(8) + Checksum(1)
+#define PACKET_TOTAL_SIZE   (2 + PACKET_DATA_SIZE)  // Header(2) + Data(8) - NO CHECKSUM for speed
 
 // Configuration parameters (MUST BE SAME as transmitter)
 #define LORA_ADDRESS        0x0000      // Device address
@@ -38,8 +38,7 @@ static LoRa_ReceivedData_t received_data;
 typedef enum {
     RX_STATE_WAIT_HEADER1,
     RX_STATE_WAIT_HEADER2,
-    RX_STATE_RECEIVING_DATA,
-    RX_STATE_WAIT_CHECKSUM
+    RX_STATE_RECEIVING_DATA
 } RxState_t;
 
 static RxState_t rx_state = RX_STATE_WAIT_HEADER1;
@@ -230,7 +229,7 @@ bool LoRa_Receiver_GetData(LoRa_ReceivedData_t *data)
 /**
   * @brief  UART receive complete callback (called by HAL)
   * @note   This function should be called from HAL_UART_RxCpltCallback
-  * @note   Uses state machine for packet synchronization
+  * @note   Uses state machine for packet synchronization (NO CHECKSUM for speed)
   * @retval None
   */
 void LoRa_Receiver_IRQHandler(void)
@@ -265,22 +264,9 @@ void LoRa_Receiver_IRQHandler(void)
 
             if (rx_count >= PACKET_DATA_SIZE)
             {
-                rx_state = RX_STATE_WAIT_CHECKSUM;
-            }
-            break;
-
-        case RX_STATE_WAIT_CHECKSUM:
-            // Validate checksum
-            {
-                uint8_t calculated_checksum = LoRa_CalculateChecksum(rx_packet, PACKET_DATA_SIZE);
-
-                if (calculated_checksum == rx_byte)
-                {
-                    // Checksum valid! Parse packet
-                    LoRa_ParseBinaryPacket();
-                    packet_ready = true;
-                }
-                // else: Checksum invalid, discard packet
+                // All 8 bytes received! Parse immediately (NO CHECKSUM for speed)
+                LoRa_ParseBinaryPacket();
+                packet_ready = true;
 
                 // Reset state machine for next packet
                 rx_state = RX_STATE_WAIT_HEADER1;
