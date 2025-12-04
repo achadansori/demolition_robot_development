@@ -1247,7 +1247,7 @@ bool LoRa_Configure(void)
 
     // REG1 - Air rate and TX power
     cmd_buffer[6] = ((LORA_AIR_RATE & 0x07) << 5) | (LORA_TX_POWER & 0x03);
- 8000a2e:	2340      	movs	r3, #64	@ 0x40
+ 8000a2e:	23a0      	movs	r3, #160	@ 0xa0
  8000a30:	72bb      	strb	r3, [r7, #10]
 
     // REG2 - Channel

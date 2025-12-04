@@ -26,7 +26,7 @@ static bool lora_ready = false;
 #define PACKET_HEADER1      0xAA
 #define PACKET_HEADER2      0x55
 #define PACKET_DATA_SIZE    8
-#define PACKET_TOTAL_SIZE   (2 + PACKET_DATA_SIZE)  // Header(2) + Data(8) - NO CHECKSUM for speed
+#define PACKET_TOTAL_SIZE   (2 + PACKET_DATA_SIZE + 1)  // Header(2) + Data(8) + Checksum(1)
 
 // Configuration parameters (MUST BE SAME for TX and RX)
 #define LORA_ADDRESS        0x0000      // Device address
@@ -173,7 +173,7 @@ bool LoRa_IsReady(void)
 }
 
 /**
-  * @brief  Send binary data via LoRa with sync header (NO CHECKSUM for speed)
+  * @brief  Send binary data via LoRa with sync header and checksum
   * @param  data: pointer to binary data buffer (8 bytes)
   * @param  size: size of data in bytes (must be 8)
   * @retval true if successful, false otherwise
@@ -185,17 +185,20 @@ bool LoRa_SendBinary(const uint8_t* data, uint16_t size)
         return false;
     }
 
-    // Create packet with header only (10 bytes total: 2 header + 8 data)
+    // Create packet with header and checksum
     uint8_t packet[PACKET_TOTAL_SIZE];
 
-    // Add header for sync
+    // Add header
     packet[0] = PACKET_HEADER1;  // 0xAA
     packet[1] = PACKET_HEADER2;  // 0x55
 
-    // Copy data (8 bytes)
+    // Copy data
     memcpy(&packet[2], data, PACKET_DATA_SIZE);
 
-    // Send complete packet via UART (10 bytes - faster than 11!)
+    // Calculate and add checksum
+    packet[PACKET_TOTAL_SIZE - 1] = LoRa_CalculateChecksum(data, PACKET_DATA_SIZE);
+
+    // Send complete packet via UART
     HAL_StatusTypeDef status = HAL_UART_Transmit(huart_lora, packet, PACKET_TOTAL_SIZE, LORA_TIMEOUT);
 
     return (status == HAL_OK);
