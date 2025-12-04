@@ -3,6 +3,12 @@
   * @file           : pwm.h
   * @brief          : PWM Control for 20 Channels (Demolition Robot)
   *                   Uses TIM1, TIM2, TIM3, TIM4, TIM8
+  *
+  * @note           PWM Configuration for TIP122 Transistor Switching:
+  *                 - Frequency: 10kHz (100us period)
+  *                 - Duty Cycle: 0-100% maps to 0-3.3V average
+  *                 - Visible on oscilloscope as PWM signal
+  *                 - Each channel drives TIP122 base through resistor
   ******************************************************************************
   */
 
