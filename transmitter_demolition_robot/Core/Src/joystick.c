@@ -95,19 +95,19 @@ void Joystick_Read(Joystick_Data_t* data)
     adc_value = Joystick_ReadChannel(ADC_CHANNEL_3);
     data->left_y = (uint8_t)(adc_value >> 4);
 
-    // Read Right Joystick X (PA6 - ADC_CHANNEL_6)
+    // Read Right Joystick Y (PA6 - ADC_CHANNEL_6) - SWAPPED WITH X
     adc_value = Joystick_ReadChannel(ADC_CHANNEL_6);
-    data->right_x = (uint8_t)(adc_value >> 4);
-
-    // Read Right Joystick Y (PA7 - ADC_CHANNEL_7)
-    adc_value = Joystick_ReadChannel(ADC_CHANNEL_7);
     data->right_y = (uint8_t)(adc_value >> 4);
 
-    // Read R8 Potentiometer (PA0 - ADC_CHANNEL_0)
-    adc_value = Joystick_ReadChannel(ADC_CHANNEL_0);
-    data->r8 = (uint8_t)(adc_value >> 4);
+    // Read Right Joystick X (PA7 - ADC_CHANNEL_7) - SWAPPED WITH Y
+    adc_value = Joystick_ReadChannel(ADC_CHANNEL_7);
+    data->right_x = (uint8_t)(adc_value >> 4);
 
-    // Read R1 Potentiometer (PA1 - ADC_CHANNEL_1)
-    adc_value = Joystick_ReadChannel(ADC_CHANNEL_1);
+    // Read R1 Potentiometer (PA0 - ADC_CHANNEL_0) - SWAPPED WITH R8
+    adc_value = Joystick_ReadChannel(ADC_CHANNEL_0);
     data->r1 = (uint8_t)(adc_value >> 4);
+
+    // Read R8 Potentiometer (PA1 - ADC_CHANNEL_1) - SWAPPED WITH R1
+    adc_value = Joystick_ReadChannel(ADC_CHANNEL_1);
+    data->r8 = (uint8_t)(adc_value >> 4);
 }

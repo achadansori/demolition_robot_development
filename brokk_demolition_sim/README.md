@@ -40,16 +40,16 @@ Right Stick Y: Cylinder 2 (Stick) IN/OUT
 Right Stick X: Cylinder 1 (Boom) IN/OUT
 ```
 
-### Mode LOWER (s5_1=1, s5_2=0) - Mobility Controls
+### Mode DUAL (s5_1=1, s5_2=0) - Reserved for Future
+Reserved untuk implementasi masa depan (currently inactive).
+
+### Mode LOWER (s5_1=0, s5_2=1) - Mobility Controls
 ```
 Left Stick Y:  Track Left Forward/Backward
 Left Stick X:  Outrigger Left Up/Down
 Right Stick Y: Track Right Forward/Backward
 Right Stick X: Outrigger Right Up/Down
 ```
-
-### Mode DUAL (s5_1=0, s5_2=1)
-Reserved untuk implementasi masa depan.
 
 ## Instalasi
 
