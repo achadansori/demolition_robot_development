@@ -461,7 +461,7 @@ void OLED_ShowSplashScreen(void)
   * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y, r8, r1]
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode)
 {
     OLED_Clear();
 
@@ -473,6 +473,28 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
     for (uint8_t i = 0; i < OLED_WIDTH; i++)
     {
         OLED_DrawPixel(i, 10, true);
+    }
+
+    // ========================================================================
+    // SLEEP MODE - Emergency Display (Highest Priority)
+    // ========================================================================
+    if (sleep_mode)
+    {
+        // Draw warning box
+        OLED_DrawRect(5, 18, 118, 40);
+        OLED_DrawRect(6, 19, 116, 38);  // Double border for emphasis
+
+        // Display SLEEP MODE status
+        OLED_SetCursor(18, 24);
+        OLED_WriteString("** SLEEP MODE **", FONT_SIZE_NORMAL);
+
+        OLED_SetCursor(15, 36);
+        OLED_WriteString("Emergency Active", FONT_SIZE_NORMAL);
+
+        OLED_SetCursor(10, 48);
+        OLED_WriteString("All Controls OFF", FONT_SIZE_NORMAL);
+
+        return;  // Exit early - don't show normal mode info
     }
 
     // Extract joystick values
