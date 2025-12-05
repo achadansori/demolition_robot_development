@@ -1,10 +1,10 @@
-09:03:33 **** Incremental Build of configuration Debug for project control_demoliiton_robot ****
+10:43:27 **** Incremental Build of configuration Debug for project control_demoliiton_robot ****
 make -j4 all 
 arm-none-eabi-size  control_demoliiton_robot.elf 
    text	   data	    bss	    dec	    hex	filename
-  42100	    332	   9364	  51796	   ca54	control_demoliiton_robot.elf
+  48228	    332	   9748	  58308	   e3c4	control_demoliiton_robot.elf
 Finished building: default.size.stdout
  
 
-09:03:34 Build Finished. 0 errors, 0 warnings. (took 169ms)
+10:43:28 Build Finished. 0 errors, 0 warnings. (took 218ms)
 

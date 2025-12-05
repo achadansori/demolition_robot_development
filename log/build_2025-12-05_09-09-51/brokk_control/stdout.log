@@ -1,0 +1,27 @@
+running develop
+running egg_info
+creating brokk_control.egg-info
+writing brokk_control.egg-info/PKG-INFO
+writing dependency_links to brokk_control.egg-info/dependency_links.txt
+writing entry points to brokk_control.egg-info/entry_points.txt
+writing requirements to brokk_control.egg-info/requires.txt
+writing top-level names to brokk_control.egg-info/top_level.txt
+writing manifest file 'brokk_control.egg-info/SOURCES.txt'
+reading manifest file 'brokk_control.egg-info/SOURCES.txt'
+writing manifest file 'brokk_control.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/lib/python3.10/site-packages/brokk-control.egg-link (link to .)
+Installing joint_controller script to /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/lib/brokk_control
+Installing serial_bridge script to /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/lib/brokk_control
+
+Installed /home/achadansori/STM32CubeIDE/demolition_robot_development/build/brokk_control
+running symlink_data
+creating /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/ament_index
+creating /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/ament_index/resource_index
+creating /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/ament_index/resource_index/packages
+symbolically linking /home/achadansori/STM32CubeIDE/demolition_robot_development/build/brokk_control/resource/brokk_control -> /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/ament_index/resource_index/packages
+symbolically linking /home/achadansori/STM32CubeIDE/demolition_robot_development/build/brokk_control/package.xml -> /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/brokk_control
+creating /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/brokk_control/launch
+symbolically linking /home/achadansori/STM32CubeIDE/demolition_robot_development/build/brokk_control/launch/simulation.launch.py -> /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/brokk_control/launch
+symbolically linking /home/achadansori/STM32CubeIDE/demolition_robot_development/build/brokk_control/launch/hardware.launch.py -> /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/brokk_control/launch
+symbolically linking /home/achadansori/STM32CubeIDE/demolition_robot_development/build/brokk_control/launch/hybrid.launch.py -> /home/achadansori/STM32CubeIDE/demolition_robot_development/install/brokk_control/share/brokk_control/launch

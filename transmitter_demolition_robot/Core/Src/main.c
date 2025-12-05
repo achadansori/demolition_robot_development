@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "i2c.h"
 #include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
@@ -100,6 +101,7 @@ int main(void)
   MX_ADC1_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   // Initialize M0 and M1 GPIO pins for LoRa (PB8=M0, PB9=M1)

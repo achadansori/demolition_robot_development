@@ -1,0 +1,20 @@
+[0.587s] Invoking command in '/home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_control': PYTHONPATH=/home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_control/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/install/brokk_control/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_control/build --no-deps symlink_data
+[0.804s] running develop
+[0.863s] /usr/lib/python3/dist-packages/pkg_resources/__init__.py:116: PkgResourcesDeprecationWarning: 1.12.1-git20200711.33e2d80-dfsg1-0.6 is an invalid version and will not be supported in a future release
+[0.863s]   warnings.warn(
+[0.975s] running egg_info
+[0.976s] writing brokk_control.egg-info/PKG-INFO
+[0.976s] writing dependency_links to brokk_control.egg-info/dependency_links.txt
+[0.976s] writing entry points to brokk_control.egg-info/entry_points.txt
+[0.976s] writing requirements to brokk_control.egg-info/requires.txt
+[0.976s] writing top-level names to brokk_control.egg-info/top_level.txt
+[0.977s] reading manifest file 'brokk_control.egg-info/SOURCES.txt'
+[0.978s] writing manifest file 'brokk_control.egg-info/SOURCES.txt'
+[1.002s] running build_ext
+[1.002s] Creating /home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/install/brokk_control/lib/python3.10/site-packages/brokk-control.egg-link (link to .)
+[1.002s] Installing joint_controller script to /home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/install/brokk_control/lib/brokk_control
+[1.003s] Installing serial_bridge script to /home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/install/brokk_control/lib/brokk_control
+[1.003s] 
+[1.003s] Installed /home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_control
+[1.003s] running symlink_data
+[1.036s] Invoked command in '/home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_control' returned '0': PYTHONPATH=/home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_control/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/install/brokk_control/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_control/build --no-deps symlink_data
