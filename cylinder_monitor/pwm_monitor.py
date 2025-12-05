@@ -15,7 +15,7 @@ import sys
 
 
 class PWMMonitor:
-    def __init__(self, port='/dev/ttyACM0', baudrate=115200, history_size=100):
+    def __init__(self, port='/dev/ttyACM0', baudrate=115200, history_size=50):
         """
         Initialize PWM Monitor
 
@@ -41,9 +41,9 @@ class PWMMonitor:
             'TRK_R_FW', 'TRK_R_BK', 'TRK_L_FW', 'TRK_L_BK'
         ]
 
-        # History buffer for each channel
-        self.history = {i: deque([0] * history_size, maxlen=history_size)
-                       for i in range(self.num_channels)}
+        # History buffer for each channel (numpy for faster access)
+        self.history = {i: np.zeros(history_size) for i in range(self.num_channels)}
+        self.history_index = 0
 
         # Current values
         self.current_values = [0] * self.num_channels
@@ -52,6 +52,9 @@ class PWMMonitor:
         self.HEADER_1 = 0xAA
         self.HEADER_2 = 0x55
         self.PACKET_SIZE = 23  # Header(2) + Data(20) + Checksum(1)
+
+        # X-axis data (pre-computed)
+        self.x_data = np.arange(history_size)
 
     def connect(self):
         """Connect to serial port"""
@@ -119,65 +122,91 @@ class PWMMonitor:
         pwm_values = self.read_packet()
         if pwm_values:
             self.current_values = pwm_values
+            # Update history using circular buffer
             for i, value in enumerate(pwm_values):
-                self.history[i].append(value)
+                self.history[i] = np.roll(self.history[i], -1)
+                self.history[i][-1] = value
             return True
         return False
 
     def setup_plot(self):
         """Setup matplotlib figure and axes"""
+        # Use interactive backend for better performance
+        plt.ion()
+
         # Create figure with subplots
-        self.fig, self.axes = plt.subplots(5, 4, figsize=(16, 12))
-        self.fig.suptitle('PWM Monitor - 20 Channels (0-100%)', fontsize=16, fontweight='bold')
+        self.fig, self.axes = plt.subplots(5, 4, figsize=(16, 10))
+        self.fig.suptitle('PWM Monitor - 20 Channels (0-100%)', fontsize=14, fontweight='bold')
         self.axes = self.axes.flatten()
 
         # Setup each subplot
         self.lines = []
+        self.texts = []
+
         for i in range(self.num_channels):
             ax = self.axes[i]
-            ax.set_title(self.channel_names[i], fontsize=10, fontweight='bold')
+            ax.set_title(self.channel_names[i], fontsize=9, fontweight='bold')
             ax.set_ylim(-5, 105)
-            ax.set_xlim(0, self.history_size)
-            ax.grid(True, alpha=0.3)
-            ax.set_ylabel('PWM (%)', fontsize=8)
+            ax.set_xlim(0, self.history_size - 1)
+            ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+            ax.set_ylabel('PWM (%)', fontsize=7)
+            ax.tick_params(labelsize=7)
 
-            # Create line
-            line, = ax.plot([], [], 'b-', linewidth=2)
+            # Create line with initial data
+            line, = ax.plot(self.x_data, self.history[i], 'b-', linewidth=1.5, animated=True)
             self.lines.append(line)
 
-            # Add value text
-            ax.text(0.98, 0.95, '', transform=ax.transAxes,
-                   fontsize=12, fontweight='bold',
-                   verticalalignment='top', horizontalalignment='right',
-                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            # Add value text (animated for better performance)
+            text = ax.text(0.98, 0.95, '0%', transform=ax.transAxes,
+                          fontsize=11, fontweight='bold',
+                          verticalalignment='top', horizontalalignment='right',
+                          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
+                          animated=True)
+            self.texts.append(text)
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+        plt.tight_layout(rect=[0, 0.02, 1, 0.98])
+
+        # Draw background once
+        self.fig.canvas.draw()
+        self.backgrounds = [self.fig.canvas.copy_from_bbox(ax.bbox) for ax in self.axes]
 
     def animate(self, frame):
-        """Animation function for matplotlib"""
+        """Animation function for matplotlib - optimized with blitting"""
         # Read new data
         self.update_data()
 
-        # Update plots
-        x_data = np.arange(len(self.history[0]))
+        # List of artists to return for blitting
+        artists = []
+
+        # Update each channel
         for i in range(self.num_channels):
-            y_data = list(self.history[i])
-            self.lines[i].set_data(x_data, y_data)
+            # Restore background
+            self.fig.canvas.restore_region(self.backgrounds[i])
+
+            # Update line data
+            self.lines[i].set_ydata(self.history[i])
 
             # Update value text
-            ax = self.axes[i]
-            value_text = ax.texts[0]
-            value_text.set_text(f'{self.current_values[i]}%')
+            self.texts[i].set_text(f'{self.current_values[i]}%')
 
             # Color code based on value
             if self.current_values[i] > 0:
-                self.lines[i].set_color('green')
-                self.lines[i].set_linewidth(2.5)
+                self.lines[i].set_color('#00AA00')  # Green
+                self.lines[i].set_linewidth(2.0)
             else:
-                self.lines[i].set_color('blue')
+                self.lines[i].set_color('#0066CC')  # Blue
                 self.lines[i].set_linewidth(1.5)
 
-        return self.lines
+            # Redraw line and text
+            self.axes[i].draw_artist(self.lines[i])
+            self.axes[i].draw_artist(self.texts[i])
+
+            # Blit the subplot
+            self.fig.canvas.blit(self.axes[i].bbox)
+
+            artists.extend([self.lines[i], self.texts[i]])
+
+        return artists
 
     def run(self):
         """Start monitoring and visualization"""
@@ -185,19 +214,21 @@ class PWMMonitor:
             return
 
         print(f"\n{'='*60}")
-        print(f"PWM Monitor Running")
+        print(f"PWM Monitor Running - Optimized")
         print(f"Port: {self.port} @ {self.baudrate} baud")
         print(f"Channels: {self.num_channels}")
+        print(f"Update Rate: 50Hz (20ms interval)")
         print(f"{'='*60}\n")
 
         # Setup plot
         self.setup_plot()
 
-        # Start animation
-        ani = FuncAnimation(self.fig, self.animate, interval=50, blit=False, cache_frame_data=False)
+        # Start animation with faster interval and blitting
+        # interval=20 means 50Hz update rate (very responsive)
+        ani = FuncAnimation(self.fig, self.animate, interval=20, blit=True, cache_frame_data=False)
 
         try:
-            plt.show()
+            plt.show(block=True)
         except KeyboardInterrupt:
             print("\n\n✓ Monitoring stopped by user")
         finally:
@@ -207,13 +238,13 @@ class PWMMonitor:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='PWM Monitor for Demolition Robot')
+    parser = argparse.ArgumentParser(description='PWM Monitor for Demolition Robot (Optimized)')
     parser.add_argument('-p', '--port', default='/dev/ttyACM0',
                        help='Serial port (default: /dev/ttyACM0)')
     parser.add_argument('-b', '--baudrate', type=int, default=115200,
                        help='Baudrate (default: 115200)')
-    parser.add_argument('-s', '--history', type=int, default=100,
-                       help='History size (default: 100)')
+    parser.add_argument('-s', '--history', type=int, default=50,
+                       help='History buffer size in samples (default: 50, smaller = faster)')
 
     args = parser.parse_args()
 
