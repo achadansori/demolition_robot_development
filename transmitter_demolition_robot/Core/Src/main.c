@@ -31,6 +31,7 @@
 #include "switch.h"
 #include "usb.h"
 #include "lora.h"
+#include "oled.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,7 +52,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+// NOTE: Add this in i2c.c after enabling I2C1 in CubeMX:
+// I2C_HandleTypeDef hi2c1;
+extern I2C_HandleTypeDef hi2c1;  // I2C1 for OLED (PB6=SCL, PB7=SDA)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -134,6 +137,17 @@ int main(void)
   USB_Print("LoRa E220 initialized - Ready to transmit\r\n");
   USB_Print("========================================\r\n");
   HAL_Delay(50);
+
+  // Initialize OLED Display (128x64 I2C on PB6/PB7)
+  // NOTE: Make sure I2C1 is enabled in CubeMX first!
+  // PB6 = I2C1_SCL, PB7 = I2C1_SDA
+  OLED_Init(&hi2c1);
+  USB_Print("OLED Display initialized\r\n");
+
+  // Show splash screen
+  OLED_ShowSplashScreen();
+  USB_Print("Splash screen shown\r\n");
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -159,6 +173,15 @@ int main(void)
     {
         usb_counter = 0;
         USB_PrintData(&tx_data);
+    }
+
+    // Update OLED display with mode info (every 10 cycles = 1 second)
+    static uint8_t oled_counter = 0;
+    if (++oled_counter >= 10)
+    {
+        oled_counter = 0;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2);
+        OLED_Update();
     }
 
     // Delay 100ms for stable transmission (10Hz update rate)
