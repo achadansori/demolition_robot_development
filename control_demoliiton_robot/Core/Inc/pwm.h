@@ -4,11 +4,17 @@
   * @brief          : PWM Control for 20 Channels (Demolition Robot)
   *                   Uses TIM1, TIM2, TIM3, TIM4, TIM8
   *
-  * @note           PWM Configuration for TIP122 Transistor Switching:
-  *                 - Frequency: 10kHz (100us period)
+  * @note           PWM Configuration for Hydraulic Proportional Valves:
+  *                 - Frequency: 1kHz (1ms period) - OPTIMAL for solenoid valves
   *                 - Duty Cycle: 0-100% maps to 0-3.3V average
-  *                 - Visible on oscilloscope as PWM signal
+  *                 - Register-based implementation for direct hardware control
   *                 - Each channel drives TIP122 base through resistor
+  *
+  * @note           Why 1kHz?
+  *                 - Proportional solenoid valves respond best at 200Hz-2kHz
+  *                 - 1kHz is sweet spot: smooth control + fast response
+  *                 - Lower than 10kHz = less heat, longer valve life
+  *                 - No buzzing/chattering noise
   ******************************************************************************
   */
 

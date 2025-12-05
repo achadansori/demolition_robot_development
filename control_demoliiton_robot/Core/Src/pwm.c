@@ -1,28 +1,33 @@
 /**
   ******************************************************************************
   * @file           : pwm.c
-  * @brief          : PWM Control Implementation for 20 Channels
+  * @brief          : PWM Control Implementation for 20 Channels (Register-based)
+  *                   Uses direct register access like working example
   ******************************************************************************
   */
 
 /* Includes ------------------------------------------------------------------*/
 #include "pwm.h"
-#include "tim.h"
 #include <string.h>
 
 /* Private defines -----------------------------------------------------------*/
-#define PWM_FREQUENCY       10000   // 10kHz for TIP122 transistor switching (visible on oscilloscope)
-#define PWM_PERIOD          100     // 100us period (10kHz)
-#define PWM_MIN_PULSE       0       // 0% duty = 0V
-#define PWM_MAX_PULSE       100     // 100% duty = 3.3V average
+// PWM Frequency: 1000 Hz (1ms period) - OPTIMAL for proportional solenoid valves
+// Timer clock = 168 MHz (TIM1, TIM8) or 84 MHz (TIM2, TIM3, TIM4)
+#define PWM_FREQUENCY       1000    // 1kHz - sweet spot for hydraulic proportional valves
+#define PWM_PRESCALER_APB2  167     // For TIM1, TIM8: 168MHz / (167+1) = 1MHz
+#define PWM_PRESCALER_APB1  83      // For TIM2, TIM3, TIM4: 84MHz / (83+1) = 1MHz
+#define PWM_PERIOD          999     // 1MHz / (999+1) = 1000 Hz
 
 /* Private variables ---------------------------------------------------------*/
 static uint8_t pwm_duty[PWM_CHANNEL_COUNT] = {0};
 
 /* Private function prototypes -----------------------------------------------*/
 static void PWM_ConfigureGPIO(void);
-static void PWM_ConfigureTimers(void);
-static void PWM_SetChannelPulse(PWM_Channel_t channel, uint16_t pulse_width);
+static void PWM_TIM1_Init(void);
+static void PWM_TIM2_Init(void);
+static void PWM_TIM3_Init(void);
+static void PWM_TIM4_Init(void);
+static void PWM_TIM8_Init(void);
 
 /**
   * @brief  Initialize all PWM channels
@@ -30,196 +35,270 @@ static void PWM_SetChannelPulse(PWM_Channel_t channel, uint16_t pulse_width);
   */
 void PWM_Init(void)
 {
-    // Configure GPIO pins
+    // Configure GPIO pins first
     PWM_ConfigureGPIO();
 
-    // Configure Timers
-    PWM_ConfigureTimers();
+    // Configure each timer with register access
+    PWM_TIM1_Init();
+    PWM_TIM2_Init();
+    PWM_TIM3_Init();
+    PWM_TIM4_Init();
+    PWM_TIM8_Init();
 
     // Initialize all channels to 0%
     PWM_StopAll();
 }
 
 /**
-  * @brief  Configure GPIO pins for PWM output
+  * @brief  Configure GPIO pins for PWM output (using register access)
   * @retval None
   */
 static void PWM_ConfigureGPIO(void)
 {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-
     // Enable clocks
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-    __HAL_RCC_GPIOE_CLK_ENABLE();
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOBEN |
+                    RCC_AHB1ENR_GPIOCEN | RCC_AHB1ENR_GPIODEN |
+                    RCC_AHB1ENR_GPIOEEN;
 
     // Configure TIM1 pins (PE9, PE11, PE13, PE14) - AF1
-    GPIO_InitStruct.Pin = GPIO_PIN_9 | GPIO_PIN_11 | GPIO_PIN_13 | GPIO_PIN_14;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF1_TIM1;
-    HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+    GPIOE->MODER &= ~((3<<(9*2)) | (3<<(11*2)) | (3<<(13*2)) | (3<<(14*2)));
+    GPIOE->MODER |= (2<<(9*2)) | (2<<(11*2)) | (2<<(13*2)) | (2<<(14*2));  // Alternate function
+    GPIOE->AFR[1] &= ~((0xF<<((9-8)*4)) | (0xF<<((11-8)*4)) | (0xF<<((13-8)*4)) | (0xF<<((14-8)*4)));
+    GPIOE->AFR[1] |= (1<<((9-8)*4)) | (1<<((11-8)*4)) | (1<<((13-8)*4)) | (1<<((14-8)*4));  // AF1
+    GPIOE->OSPEEDR |= (3<<(9*2)) | (3<<(11*2)) | (3<<(13*2)) | (3<<(14*2));  // High speed
 
     // Configure TIM2 pins (PA0, PA1, PA2, PA3) - AF1
-    GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
-    GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    GPIOA->MODER &= ~((3<<(0*2)) | (3<<(1*2)) | (3<<(2*2)) | (3<<(3*2)));
+    GPIOA->MODER |= (2<<(0*2)) | (2<<(1*2)) | (2<<(2*2)) | (2<<(3*2));
+    GPIOA->AFR[0] &= ~((0xF<<(0*4)) | (0xF<<(1*4)) | (0xF<<(2*4)) | (0xF<<(3*4)));
+    GPIOA->AFR[0] |= (1<<(0*4)) | (1<<(1*4)) | (1<<(2*4)) | (1<<(3*4));  // AF1
+    GPIOA->OSPEEDR |= (3<<(0*2)) | (3<<(1*2)) | (3<<(2*2)) | (3<<(3*2));
 
-    // Configure TIM3 pins (PB4, PB5, PB0, PB1) - AF2
-    GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4 | GPIO_PIN_5;
-    GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    // Configure TIM3 pins (PB0, PB1, PB4, PB5) - AF2
+    GPIOB->MODER &= ~((3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2)));
+    GPIOB->MODER |= (2<<(0*2)) | (2<<(1*2)) | (2<<(4*2)) | (2<<(5*2));
+    GPIOB->AFR[0] &= ~((0xF<<(0*4)) | (0xF<<(1*4)) | (0xF<<(4*4)) | (0xF<<(5*4)));
+    GPIOB->AFR[0] |= (2<<(0*4)) | (2<<(1*4)) | (2<<(4*4)) | (2<<(5*4));  // AF2
+    GPIOB->OSPEEDR |= (3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2));
 
     // Configure TIM4 pins (PD12, PD13, PD14, PD15) - AF2
-    GPIO_InitStruct.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
-    GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
-    HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+    GPIOD->MODER &= ~((3<<(12*2)) | (3<<(13*2)) | (3<<(14*2)) | (3<<(15*2)));
+    GPIOD->MODER |= (2<<(12*2)) | (2<<(13*2)) | (2<<(14*2)) | (2<<(15*2));
+    GPIOD->AFR[1] &= ~((0xF<<((12-8)*4)) | (0xF<<((13-8)*4)) | (0xF<<((14-8)*4)) | (0xF<<((15-8)*4)));
+    GPIOD->AFR[1] |= (2<<((12-8)*4)) | (2<<((13-8)*4)) | (2<<((14-8)*4)) | (2<<((15-8)*4));  // AF2
+    GPIOD->OSPEEDR |= (3<<(12*2)) | (3<<(13*2)) | (3<<(14*2)) | (3<<(15*2));
 
     // Configure TIM8 pins (PC6, PC7, PC8, PC9) - AF3
-    GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
-    GPIO_InitStruct.Alternate = GPIO_AF3_TIM8;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+    GPIOC->MODER &= ~((3<<(6*2)) | (3<<(7*2)) | (3<<(8*2)) | (3<<(9*2)));
+    GPIOC->MODER |= (2<<(6*2)) | (2<<(7*2)) | (2<<(8*2)) | (2<<(9*2));
+    GPIOC->AFR[0] &= ~((0xF<<(6*4)) | (0xF<<(7*4)));
+    GPIOC->AFR[0] |= (3<<(6*4)) | (3<<(7*4));  // AF3
+    GPIOC->AFR[1] &= ~((0xF<<((8-8)*4)) | (0xF<<((9-8)*4)));
+    GPIOC->AFR[1] |= (3<<((8-8)*4)) | (3<<((9-8)*4));  // AF3
+    GPIOC->OSPEEDR |= (3<<(6*2)) | (3<<(7*2)) | (3<<(8*2)) | (3<<(9*2));
 }
 
 /**
-  * @brief  Configure Timer peripherals for PWM
+  * @brief  Initialize TIM1 (Advanced timer) for PWM - APB2 168MHz
   * @retval None
   */
-static void PWM_ConfigureTimers(void)
+static void PWM_TIM1_Init(void)
 {
-    TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-    TIM_MasterConfigTypeDef sMasterConfig = {0};
-    TIM_OC_InitTypeDef sConfigOC = {0};
+    // Enable TIM1 clock
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
 
-    // Enable timer clocks
-    __HAL_RCC_TIM1_CLK_ENABLE();
-    __HAL_RCC_TIM2_CLK_ENABLE();
-    __HAL_RCC_TIM3_CLK_ENABLE();
-    __HAL_RCC_TIM4_CLK_ENABLE();
-    __HAL_RCC_TIM8_CLK_ENABLE();
+    // Configure timer
+    TIM1->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
+    TIM1->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
 
-    // Common timer configuration (10kHz PWM for TIP122 switching)
-    // Assuming system clock is 84MHz for APB2 timers (TIM1, TIM8)
-    // and 42MHz for APB1 timers (TIM2, TIM3, TIM4)
+    // Configure all 4 channels as PWM mode 1
+    TIM1->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
+    TIM1->CCMR1 |= (6 << TIM_CCMR1_OC1M_Pos) | (6 << TIM_CCMR1_OC2M_Pos);
+    TIM1->CCMR1 |= TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
 
-    // Configure TIM1 (84MHz / 84 = 1MHz, 1MHz / 10kHz = 100)
-    htim1.Instance = TIM1;
-    htim1.Init.Prescaler = 83;  // 84MHz / 84 = 1MHz
-    htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim1.Init.Period = PWM_PERIOD - 1;  // 100 - 1 = 99
-    htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    htim1.Init.RepetitionCounter = 0;
-    HAL_TIM_Base_Init(&htim1);
-    HAL_TIM_PWM_Init(&htim1);
+    TIM1->CCMR2 &= ~(TIM_CCMR2_OC3M | TIM_CCMR2_OC4M);
+    TIM1->CCMR2 |= (6 << TIM_CCMR2_OC3M_Pos) | (6 << TIM_CCMR2_OC4M_Pos);
+    TIM1->CCMR2 |= TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE;
 
-    // Configure TIM2, TIM3, TIM4 (42MHz / 42 = 1MHz, 1MHz / 10kHz = 100)
-    htim2.Instance = TIM2;
-    htim2.Init.Prescaler = 41;  // 42MHz / 42 = 1MHz
-    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim2.Init.Period = PWM_PERIOD - 1;  // 100 - 1 = 99
-    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_Base_Init(&htim2);
-    HAL_TIM_PWM_Init(&htim2);
+    // Set initial duty cycle to 0
+    TIM1->CCR1 = 0;
+    TIM1->CCR2 = 0;
+    TIM1->CCR3 = 0;
+    TIM1->CCR4 = 0;
 
-    htim3.Instance = TIM3;
-    htim3.Init.Prescaler = 41;
-    htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim3.Init.Period = PWM_PERIOD - 1;
-    htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_Base_Init(&htim3);
-    HAL_TIM_PWM_Init(&htim3);
+    // Enable channels
+    TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E;
 
-    htim4.Instance = TIM4;
-    htim4.Init.Prescaler = 41;
-    htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim4.Init.Period = PWM_PERIOD - 1;
-    htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_Base_Init(&htim4);
-    HAL_TIM_PWM_Init(&htim4);
+    // Enable auto-reload preload
+    TIM1->CR1 |= TIM_CR1_ARPE;
 
-    // Configure TIM8 (84MHz / 84 = 1MHz, 1MHz / 10kHz = 100)
-    htim8.Instance = TIM8;
-    htim8.Init.Prescaler = 83;
-    htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim8.Init.Period = PWM_PERIOD - 1;
-    htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    htim8.Init.RepetitionCounter = 0;
-    HAL_TIM_Base_Init(&htim8);
-    HAL_TIM_PWM_Init(&htim8);
+    // IMPORTANT: Enable main output for advanced timers (TIM1, TIM8)
+    TIM1->BDTR |= TIM_BDTR_MOE;
 
-    // Configure PWM channels (common settings)
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse = 0;
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-
-    // Configure all channels
-    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2);
-    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3);
-    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2);
-    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3);
-    HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2);
-    HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3);
-    HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2);
-    HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3);
-    HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_2);
-    HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_3);
-    HAL_TIM_PWM_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_4);
-
-    // Start all PWM channels
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
-
-    HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_4);
+    // Start timer
+    TIM1->CR1 |= TIM_CR1_CEN;
 }
 
 /**
-  * @brief  Set PWM duty cycle (0-100%)
-  * @param  channel: PWM channel
-  * @param  duty_percent: Duty cycle in percentage (0-100)
+  * @brief  Initialize TIM2 (General purpose) for PWM - APB1 84MHz
   * @retval None
-  *
-  * @note   For TIP122 transistor switching:
-  *         - 0% duty   = 0V average (TIP122 OFF, no current to base)
-  *         - 50% duty  = ~1.65V average (TIP122 half power)
-  *         - 100% duty = 3.3V average (TIP122 fully ON)
-  *         - PWM @ 10kHz will be clearly visible on oscilloscope
+  */
+static void PWM_TIM2_Init(void)
+{
+    // Enable TIM2 clock
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+
+    // Configure timer
+    TIM2->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
+    TIM2->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+
+    // Configure all 4 channels as PWM mode 1
+    TIM2->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
+    TIM2->CCMR1 |= (6 << TIM_CCMR1_OC1M_Pos) | (6 << TIM_CCMR1_OC2M_Pos);
+    TIM2->CCMR1 |= TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
+
+    TIM2->CCMR2 &= ~(TIM_CCMR2_OC3M | TIM_CCMR2_OC4M);
+    TIM2->CCMR2 |= (6 << TIM_CCMR2_OC3M_Pos) | (6 << TIM_CCMR2_OC4M_Pos);
+    TIM2->CCMR2 |= TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE;
+
+    // Set initial duty cycle to 0
+    TIM2->CCR1 = 0;
+    TIM2->CCR2 = 0;
+    TIM2->CCR3 = 0;
+    TIM2->CCR4 = 0;
+
+    // Enable channels
+    TIM2->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E;
+
+    // Enable auto-reload preload
+    TIM2->CR1 |= TIM_CR1_ARPE;
+
+    // Start timer
+    TIM2->CR1 |= TIM_CR1_CEN;
+}
+
+/**
+  * @brief  Initialize TIM3 (General purpose) for PWM - APB1 84MHz
+  * @retval None
+  */
+static void PWM_TIM3_Init(void)
+{
+    // Enable TIM3 clock
+    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+
+    // Configure timer
+    TIM3->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
+    TIM3->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+
+    // Configure all 4 channels as PWM mode 1
+    TIM3->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
+    TIM3->CCMR1 |= (6 << TIM_CCMR1_OC1M_Pos) | (6 << TIM_CCMR1_OC2M_Pos);
+    TIM3->CCMR1 |= TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
+
+    TIM3->CCMR2 &= ~(TIM_CCMR2_OC3M | TIM_CCMR2_OC4M);
+    TIM3->CCMR2 |= (6 << TIM_CCMR2_OC3M_Pos) | (6 << TIM_CCMR2_OC4M_Pos);
+    TIM3->CCMR2 |= TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE;
+
+    // Set initial duty cycle to 0
+    TIM3->CCR1 = 0;
+    TIM3->CCR2 = 0;
+    TIM3->CCR3 = 0;
+    TIM3->CCR4 = 0;
+
+    // Enable channels
+    TIM3->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E;
+
+    // Enable auto-reload preload
+    TIM3->CR1 |= TIM_CR1_ARPE;
+
+    // Start timer
+    TIM3->CR1 |= TIM_CR1_CEN;
+}
+
+/**
+  * @brief  Initialize TIM4 (General purpose) for PWM - APB1 84MHz
+  * @retval None
+  */
+static void PWM_TIM4_Init(void)
+{
+    // Enable TIM4 clock
+    RCC->APB1ENR |= RCC_APB1ENR_TIM4EN;
+
+    // Configure timer
+    TIM4->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
+    TIM4->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+
+    // Configure all 4 channels as PWM mode 1
+    TIM4->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
+    TIM4->CCMR1 |= (6 << TIM_CCMR1_OC1M_Pos) | (6 << TIM_CCMR1_OC2M_Pos);
+    TIM4->CCMR1 |= TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
+
+    TIM4->CCMR2 &= ~(TIM_CCMR2_OC3M | TIM_CCMR2_OC4M);
+    TIM4->CCMR2 |= (6 << TIM_CCMR2_OC3M_Pos) | (6 << TIM_CCMR2_OC4M_Pos);
+    TIM4->CCMR2 |= TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE;
+
+    // Set initial duty cycle to 0
+    TIM4->CCR1 = 0;
+    TIM4->CCR2 = 0;
+    TIM4->CCR3 = 0;
+    TIM4->CCR4 = 0;
+
+    // Enable channels
+    TIM4->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E;
+
+    // Enable auto-reload preload
+    TIM4->CR1 |= TIM_CR1_ARPE;
+
+    // Start timer
+    TIM4->CR1 |= TIM_CR1_CEN;
+}
+
+/**
+  * @brief  Initialize TIM8 (Advanced timer) for PWM - APB2 168MHz
+  * @retval None
+  */
+static void PWM_TIM8_Init(void)
+{
+    // Enable TIM8 clock
+    RCC->APB2ENR |= RCC_APB2ENR_TIM8EN;
+
+    // Configure timer
+    TIM8->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
+    TIM8->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+
+    // Configure channels 1, 2, 3, 4 as PWM mode 1
+    TIM8->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
+    TIM8->CCMR1 |= (6 << TIM_CCMR1_OC1M_Pos) | (6 << TIM_CCMR1_OC2M_Pos);
+    TIM8->CCMR1 |= TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
+
+    TIM8->CCMR2 &= ~(TIM_CCMR2_OC3M | TIM_CCMR2_OC4M);
+    TIM8->CCMR2 |= (6 << TIM_CCMR2_OC3M_Pos) | (6 << TIM_CCMR2_OC4M_Pos);
+    TIM8->CCMR2 |= TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE;
+
+    // Set initial duty cycle to 0
+    TIM8->CCR1 = 0;
+    TIM8->CCR2 = 0;
+    TIM8->CCR3 = 0;
+    TIM8->CCR4 = 0;
+
+    // Enable channels
+    TIM8->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E;
+
+    // Enable auto-reload preload
+    TIM8->CR1 |= TIM_CR1_ARPE;
+
+    // IMPORTANT: Enable main output for advanced timers (TIM1, TIM8)
+    TIM8->BDTR |= TIM_BDTR_MOE;
+
+    // Start timer
+    TIM8->CR1 |= TIM_CR1_CEN;
+}
+
+/**
+  * @brief  Set PWM duty cycle for a channel
+  * @param  channel: PWM channel (0-19)
+  * @param  duty_percent: Duty cycle percentage (0-100)
+  * @retval None
   */
 void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
 {
@@ -229,17 +308,49 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
     // Store duty cycle
     pwm_duty[channel] = duty_percent;
 
-    // Calculate pulse width directly from duty cycle
-    // duty_percent 0-100 maps directly to CCR value 0-100
-    uint16_t pulse_width = duty_percent;
+    // Calculate CCR value
+    uint32_t ccr_value = ((PWM_PERIOD + 1) * duty_percent) / 100;
 
-    // Set channel pulse
-    PWM_SetChannelPulse(channel, pulse_width);
+    // Set CCR based on channel mapping
+    switch(channel)
+    {
+        // TIM8 channels
+        case PWM_1_CYLINDER_1_OUT:  TIM8->CCR1 = ccr_value; break;  // PC6
+        case PWM_2_CYLINDER_1_IN:   TIM8->CCR2 = ccr_value; break;  // PC7
+        case PWM_3_CYLINDER_2_OUT:  TIM8->CCR4 = ccr_value; break;  // PC9
+        case PWM_10_TOOL_2:         TIM8->CCR3 = ccr_value; break;  // PC8
+
+        // TIM3 channels
+        case PWM_4_CYLINDER_2_IN:   TIM3->CCR2 = ccr_value; break;  // PB5
+        case PWM_6_CYLINDER_3_IN:   TIM3->CCR3 = ccr_value; break;  // PB0
+        case PWM_9_TOOL_1:          TIM3->CCR4 = ccr_value; break;  // PB1
+        case PWM_14_OUTRIGGER_LEFT_DOWN: TIM3->CCR1 = ccr_value; break;  // PB4
+
+        // TIM2 channels
+        case PWM_5_CYLINDER_3_OUT:  TIM2->CCR2 = ccr_value; break;  // PA1
+        case PWM_7_CYLINDER_4_OUT:  TIM2->CCR3 = ccr_value; break;  // PA2
+        case PWM_8_CYLINDER_4_IN:   TIM2->CCR1 = ccr_value; break;  // PA0
+        case PWM_15_OUTRIGGER_RIGHT_UP: TIM2->CCR4 = ccr_value; break;  // PA3
+
+        // TIM4 channels
+        case PWM_11_SLEW_CW:        TIM4->CCR4 = ccr_value; break;  // PD15
+        case PWM_12_SLEW_CCW:       TIM4->CCR3 = ccr_value; break;  // PD14
+        case PWM_13_OUTRIGGER_LEFT_UP: TIM4->CCR1 = ccr_value; break;  // PD12
+        case PWM_19_TRACK_LEFT_FORWARD: TIM4->CCR2 = ccr_value; break;  // PD13
+
+        // TIM1 channels
+        case PWM_16_OUTRIGGER_RIGHT_DOWN: TIM1->CCR1 = ccr_value; break;  // PE9
+        case PWM_17_TRACK_RIGHT_FORWARD:  TIM1->CCR2 = ccr_value; break;  // PE11
+        case PWM_18_TRACK_RIGHT_BACKWARD: TIM1->CCR3 = ccr_value; break;  // PE13
+        case PWM_20_TRACK_LEFT_BACKWARD:  TIM1->CCR4 = ccr_value; break;  // PE14
+
+        default: break;
+    }
 }
 
 /**
-  * @brief  Get current PWM duty cycle
-  * @param  channel: PWM channel
+  * @brief  Get current duty cycle for a channel
+  * @param  channel: PWM channel (0-19)
   * @retval Duty cycle percentage (0-100)
   */
 uint8_t PWM_GetDutyCycle(PWM_Channel_t channel)
@@ -249,8 +360,8 @@ uint8_t PWM_GetDutyCycle(PWM_Channel_t channel)
 }
 
 /**
-  * @brief  Stop PWM on specific channel (set to 0%)
-  * @param  channel: PWM channel
+  * @brief  Stop PWM on a single channel
+  * @param  channel: PWM channel to stop
   * @retval None
   */
 void PWM_Stop(PWM_Channel_t channel)
@@ -266,91 +377,9 @@ void PWM_StopAll(void)
 {
     for (uint8_t i = 0; i < PWM_CHANNEL_COUNT; i++)
     {
-        PWM_Stop((PWM_Channel_t)i);
+        PWM_SetDutyCycle((PWM_Channel_t)i, 0);
     }
-}
 
-/**
-  * @brief  Set pulse width for specific channel
-  * @param  channel: PWM channel
-  * @param  pulse_width: Pulse width in microseconds
-  * @retval None
-  */
-static void PWM_SetChannelPulse(PWM_Channel_t channel, uint16_t pulse_width)
-{
-    switch (channel)
-    {
-        // TIM8 channels
-        case PWM_1_CYLINDER_1_OUT:
-            __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, pulse_width);
-            break;
-        case PWM_2_CYLINDER_1_IN:
-            __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, pulse_width);
-            break;
-        case PWM_3_CYLINDER_2_OUT:
-            __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_4, pulse_width);
-            break;
-        case PWM_10_TOOL_2:
-            __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_3, pulse_width);
-            break;
-
-        // TIM2 channels
-        case PWM_5_CYLINDER_3_OUT:
-            __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, pulse_width);
-            break;
-        case PWM_7_CYLINDER_4_OUT:
-            __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, pulse_width);
-            break;
-        case PWM_8_CYLINDER_4_IN:
-            __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse_width);
-            break;
-        case PWM_15_OUTRIGGER_RIGHT_UP:
-            __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pulse_width);
-            break;
-
-        // TIM3 channels
-        case PWM_4_CYLINDER_2_IN:
-            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, pulse_width);
-            break;
-        case PWM_6_CYLINDER_3_IN:
-            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, pulse_width);
-            break;
-        case PWM_9_TOOL_1:
-            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, pulse_width);
-            break;
-        case PWM_14_OUTRIGGER_LEFT_DOWN:
-            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse_width);
-            break;
-
-        // TIM4 channels
-        case PWM_11_SLEW_CW:
-            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, pulse_width);
-            break;
-        case PWM_12_SLEW_CCW:
-            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, pulse_width);
-            break;
-        case PWM_13_OUTRIGGER_LEFT_UP:
-            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, pulse_width);
-            break;
-        case PWM_19_TRACK_LEFT_FORWARD:
-            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, pulse_width);
-            break;
-
-        // TIM1 channels
-        case PWM_16_OUTRIGGER_RIGHT_DOWN:
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pulse_width);
-            break;
-        case PWM_17_TRACK_RIGHT_FORWARD:
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, pulse_width);
-            break;
-        case PWM_18_TRACK_RIGHT_BACKWARD:
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, pulse_width);
-            break;
-        case PWM_20_TRACK_LEFT_BACKWARD:
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, pulse_width);
-            break;
-
-        default:
-            break;
-    }
+    // Clear duty array
+    memset(pwm_duty, 0, sizeof(pwm_duty));
 }
