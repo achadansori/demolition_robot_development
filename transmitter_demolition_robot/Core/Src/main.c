@@ -104,6 +104,11 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
+  // SLEEP mode variables
+  uint8_t sleep_mode_active = 0;
+  uint8_t sleep_transition_steps = 0;
+  #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
+
   // Initialize M0 and M1 GPIO pins for LoRa (PB8=M0, PB9=M1)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;  // PB8, PB9
@@ -162,6 +167,73 @@ int main(void)
     // Update semua data sensor
     Var_Update();
 
+    // ========================================================================
+    // SLEEP MODE - Emergency Safety Feature
+    // When S0 = 0 (emergency button pressed), default all controls to safe position
+    // ========================================================================
+    if (tx_data.switches.s0 == 0)
+    {
+        // Emergency button pressed - enter SLEEP mode
+        if (!sleep_mode_active)
+        {
+            sleep_mode_active = 1;
+            sleep_transition_steps = 0;
+        }
+
+        // Fast smooth transition to default values (10 steps = 100ms)
+        if (sleep_transition_steps < SLEEP_TRANSITION_SPEED)
+        {
+            // Calculate transition factor (0.0 to 1.0)
+            float factor = (float)(sleep_transition_steps + 1) / (float)SLEEP_TRANSITION_SPEED;
+
+            // Smooth transition for joysticks to center (127)
+            tx_data.joystick.left_x  = tx_data.joystick.left_x  + (int16_t)((127 - tx_data.joystick.left_x) * factor);
+            tx_data.joystick.left_y  = tx_data.joystick.left_y  + (int16_t)((127 - tx_data.joystick.left_y) * factor);
+            tx_data.joystick.right_x = tx_data.joystick.right_x + (int16_t)((127 - tx_data.joystick.right_x) * factor);
+            tx_data.joystick.right_y = tx_data.joystick.right_y + (int16_t)((127 - tx_data.joystick.right_y) * factor);
+
+            // Smooth transition for R1 and R8 to 0
+            tx_data.joystick.r1 = tx_data.joystick.r1 - (uint8_t)(tx_data.joystick.r1 * factor);
+            tx_data.joystick.r8 = tx_data.joystick.r8 - (uint8_t)(tx_data.joystick.r8 * factor);
+
+            sleep_transition_steps++;
+        }
+        else
+        {
+            // Transition complete - force exact default values
+            tx_data.joystick.left_x  = 127;
+            tx_data.joystick.left_y  = 127;
+            tx_data.joystick.right_x = 127;
+            tx_data.joystick.right_y = 127;
+            tx_data.joystick.r1 = 0;
+            tx_data.joystick.r8 = 0;
+        }
+
+        // All switches to 0 (except S0 which is read from hardware)
+        tx_data.switches.joy_left_btn1  = 0;
+        tx_data.switches.joy_left_btn2  = 0;
+        tx_data.switches.joy_right_btn1 = 0;
+        tx_data.switches.joy_right_btn2 = 0;
+        tx_data.switches.s1_1 = 0;
+        tx_data.switches.s1_2 = 0;
+        tx_data.switches.s2_1 = 0;
+        tx_data.switches.s2_2 = 0;
+        tx_data.switches.s4_1 = 0;
+        tx_data.switches.s4_2 = 0;
+        tx_data.switches.s5_1 = 0;
+        tx_data.switches.s5_2 = 0;
+    }
+    else
+    {
+        // S0 = 1 (normal operation) - exit SLEEP mode
+        if (sleep_mode_active)
+        {
+            sleep_mode_active = 0;
+            sleep_transition_steps = 0;
+        }
+        // Normal operation - use actual sensor readings (already in tx_data from Var_Update)
+    }
+
     // Transmit via LoRa using BINARY format (FAST! No parsing needed)
     // Binary is much faster than CSV - only 8 bytes, direct copy
     if (LoRa_IsReady())
@@ -178,11 +250,15 @@ int main(void)
     }
 
     // Update OLED display with mode info and percentages (every 10 cycles = 1 second)
+    // Update immediately when entering/exiting SLEEP mode for responsive feedback
     static uint8_t oled_counter = 0;
-    if (++oled_counter >= 10)
+    static uint8_t last_sleep_state = 0;
+
+    if (sleep_mode_active != last_sleep_state || ++oled_counter >= 10)
     {
         oled_counter = 0;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick);
+        last_sleep_state = sleep_mode_active;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active);
         OLED_Update();
     }
 

@@ -44,7 +44,7 @@ void OLED_InvertDisplay(bool invert);
 
 /* Display functions for robot data */
 void OLED_ShowSplashScreen(void);
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data);
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode);
 
 #ifdef __cplusplus
 }
