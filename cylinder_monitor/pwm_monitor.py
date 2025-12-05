@@ -189,13 +189,19 @@ class PWMMonitor:
             # Update value text
             self.texts[i].set_text(f'{self.current_values[i]}%')
 
-            # Color code based on value
-            if self.current_values[i] > 0:
-                self.lines[i].set_color('#00AA00')  # Green
-                self.lines[i].set_linewidth(2.0)
+            # Color and visibility based on value
+            if self.current_values[i] > 0 or np.max(self.history[i]) > 0:
+                # Active or has recent activity - show line
+                self.lines[i].set_visible(True)
+                if self.current_values[i] > 0:
+                    self.lines[i].set_color('#00AA00')  # Green when active
+                    self.lines[i].set_linewidth(2.0)
+                else:
+                    self.lines[i].set_color('#0066CC')  # Blue when fading
+                    self.lines[i].set_linewidth(1.5)
             else:
-                self.lines[i].set_color('#0066CC')  # Blue
-                self.lines[i].set_linewidth(1.5)
+                # No activity - hide line to avoid baseline clutter
+                self.lines[i].set_visible(False)
 
             # Redraw line and text
             self.axes[i].draw_artist(self.lines[i])
