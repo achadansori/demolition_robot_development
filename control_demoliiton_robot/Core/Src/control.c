@@ -43,12 +43,12 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     // MODE DETECTION
     // ========================================================================
     // Mode UPPER: s5_1 = 0, s5_2 = 0 → Excavator controls (cylinders, slew)
-    // Mode LOWER: s5_1 = 1, s5_2 = 0 → Mobility controls (tracks, outriggers)
-    // Mode DUAL:  s5_1 = 0, s5_2 = 1 → Reserved for future implementation
+    // Mode DUAL:  s5_1 = 1, s5_2 = 0 → Reserved for future implementation
+    // Mode LOWER: s5_1 = 0, s5_2 = 1 → Mobility controls (tracks, outriggers)
 
     bool mode_upper = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 0);
-    bool mode_lower = (lora_data->s5_1 == 1) && (lora_data->s5_2 == 0);
-    bool mode_dual  = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 1);
+    bool mode_dual  = (lora_data->s5_1 == 1) && (lora_data->s5_2 == 0);
+    bool mode_lower = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 1);
 
     // ========================================================================
     // MODE UPPER - EXCAVATOR CONTROLS

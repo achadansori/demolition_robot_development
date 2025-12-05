@@ -34,7 +34,10 @@ PWM 18-19: Track Left FORWARD/BACKWARD - LEFT stick Y (MODE LOWER)
 - **Right Stick Y** → Cylinder 2 (Stick): PWM[2]=OUT, PWM[3]=IN
 - **Right Stick X** → Cylinder 1 (Boom): PWM[0]=OUT, PWM[1]=IN
 
-### Mode LOWER (s5_1=1, s5_2=0) - Mobility
+### Mode DUAL (s5_1=1, s5_2=0) - Reserved for Future
+- Reserved for future implementation (currently inactive)
+
+### Mode LOWER (s5_1=0, s5_2=1) - Mobility
 - **Left Stick Y** → Track Left: PWM[18]=FWD, PWM[19]=BACK
 - **Left Stick X** → Outrigger Left: PWM[12]=UP, PWM[13]=DOWN
 - **Right Stick Y** → Track Right: PWM[16]=FWD, PWM[17]=BACK
