@@ -177,12 +177,12 @@ int main(void)
         USB_PrintData(&tx_data);
     }
 
-    // Update OLED display with mode info (every 10 cycles = 1 second)
+    // Update OLED display with mode info and percentages (every 10 cycles = 1 second)
     static uint8_t oled_counter = 0;
     if (++oled_counter >= 10)
     {
         oled_counter = 0;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2);
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick);
         OLED_Update();
     }
 
