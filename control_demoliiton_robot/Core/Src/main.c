@@ -18,6 +18,7 @@
 /* USER CODE BEGIN Includes */
 #include "lora.h"
 #include "control.h"
+#include "pwm.h"
 #include "usbd_cdc_if.h"
 #include <stdio.h>
 #include <string.h>
@@ -231,6 +232,39 @@ int main(void)
         // Data is still received every 50ms via LoRa realtime - just not printed every time
       }
     }
+
+    // ========================================================================
+    // Send PWM data via USB CDC for monitoring
+    // Send every 100ms (10Hz) - independent of LoRa packet rate
+    // ========================================================================
+    static uint32_t last_pwm_send = 0;
+    if (HAL_GetTick() - last_pwm_send >= 100)
+    {
+      last_pwm_send = HAL_GetTick();
+
+      // Create binary packet: Header(2) + PWM Data(20) + Checksum(1) = 23 bytes
+      uint8_t pwm_packet[23];
+      pwm_packet[0] = 0xAA;  // Header byte 1
+      pwm_packet[1] = 0x55;  // Header byte 2
+
+      // Get all 20 PWM duty cycle values (0-100%)
+      for (uint8_t i = 0; i < 20; i++)
+      {
+        pwm_packet[2 + i] = PWM_GetDutyCycle((PWM_Channel_t)i);
+      }
+
+      // Calculate XOR checksum of PWM data bytes
+      uint8_t checksum = 0;
+      for (uint8_t i = 2; i < 22; i++)
+      {
+        checksum ^= pwm_packet[i];
+      }
+      pwm_packet[22] = checksum;
+
+      // Send packet via USB CDC
+      CDC_Transmit_FS(pwm_packet, 23);
+    }
+
     // No delay here - process LoRa data immediately without blocking
   }
   /* USER CODE END 3 */
