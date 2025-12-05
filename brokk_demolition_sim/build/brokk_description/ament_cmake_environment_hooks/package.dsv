@@ -1,0 +1,4 @@
+source;share/brokk_description/local_setup.bash
+source;share/brokk_description/local_setup.dsv
+source;share/brokk_description/local_setup.sh
+source;share/brokk_description/local_setup.zsh

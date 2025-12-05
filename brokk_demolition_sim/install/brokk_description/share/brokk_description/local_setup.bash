@@ -1,0 +1,1 @@
+/home/achadansori/STM32CubeIDE/demolition_robot_development/brokk_demolition_sim/build/brokk_description/ament_cmake_environment_hooks/local_setup.bash
