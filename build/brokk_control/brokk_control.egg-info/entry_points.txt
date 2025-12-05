@@ -1,0 +1,4 @@
+[console_scripts]
+joint_controller = brokk_control.joint_controller:main
+serial_bridge = brokk_control.serial_bridge:main
+
