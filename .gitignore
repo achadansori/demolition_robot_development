@@ -1,0 +1,35 @@
+# STM32 Build Artifacts
+*.o
+*.d
+*.su
+*.cyclo
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+
+# Backup files
+*.bak
+*~
+*.swp
+*.swo
+
+# IDE files
+.settings/
+.cproject
+.project
+*.launch
+
+# Debug directories (keep structure but ignore compiled artifacts)
+# Note: Debug folder structure is tracked, but build outputs are ignored
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
