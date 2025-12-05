@@ -381,17 +381,18 @@ void OLED_ShowSplashScreen(void)
 }
 
 /**
-  * @brief  Show mode and active cylinders
+  * @brief  Show mode and active cylinders with percentage
   * @param  s5_1: Switch 5_1 state
   * @param  s5_2: Switch 5_2 state
+  * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y, r8, r1]
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data)
 {
     OLED_Clear();
 
     // Title
-    OLED_SetCursor(16, 0);
+    OLED_SetCursor(10, 0);
     OLED_WriteString("DEMOLITION ROBOT", FONT_SIZE_NORMAL);
 
     // Draw separator line
@@ -400,59 +401,97 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2)
         OLED_DrawPixel(i, 10, true);
     }
 
+    // Extract joystick values
+    uint8_t left_x = joystick_data[0];
+    uint8_t left_y = joystick_data[1];
+    uint8_t right_x = joystick_data[2];
+    uint8_t right_y = joystick_data[3];
+
+    // Convert to percentage (0-255 -> 0-100%)
+    uint8_t lx_pct = (left_x * 100) / 255;
+    uint8_t ly_pct = (left_y * 100) / 255;
+    uint8_t rx_pct = (right_x * 100) / 255;
+    uint8_t ry_pct = (right_y * 100) / 255;
+
     // Determine mode
     const char *mode_name;
-    const char *controls[4];
+    char line_buffer[20];
 
     if (s5_1 == 0 && s5_2 == 0)
     {
         // Mode UPPER - Excavator
         mode_name = "MODE: UPPER";
-        controls[0] = "LY: CYL3 Bucket";
-        controls[1] = "LX: Slew CW/CCW";
-        controls[2] = "RY: CYL2 Stick";
-        controls[3] = "RX: CYL1 Boom";
+
+        OLED_SetCursor(20, 14);
+        OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
+
+        // Display cylinders with percentages
+        OLED_SetCursor(2, 28);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL1 Boom:  %3d%%", rx_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(2, 36);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL2 Stick: %3d%%", ry_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(2, 44);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL3 Bucket:%3d%%", ly_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(2, 52);
+        snprintf(line_buffer, sizeof(line_buffer), "Slew CW/CCW:%3d%%", lx_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
     else if (s5_1 == 1 && s5_2 == 0)
     {
         // Mode DUAL - Reserved
         mode_name = "MODE: DUAL";
-        controls[0] = "Reserved for";
-        controls[1] = "Future Use";
-        controls[2] = "";
-        controls[3] = "";
+
+        OLED_SetCursor(25, 14);
+        OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
+
+        OLED_SetCursor(20, 32);
+        OLED_WriteString("Reserved for", FONT_SIZE_NORMAL);
+        OLED_SetCursor(25, 44);
+        OLED_WriteString("Future Use", FONT_SIZE_NORMAL);
     }
     else if (s5_1 == 0 && s5_2 == 1)
     {
         // Mode LOWER - Mobility
         mode_name = "MODE: LOWER";
-        controls[0] = "LY: Track Left";
-        controls[1] = "LX: Outrig Left";
-        controls[2] = "RY: Track Right";
-        controls[3] = "RX: Outrig Right";
+
+        OLED_SetCursor(20, 14);
+        OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
+
+        // Display mobility controls with percentages
+        OLED_SetCursor(2, 28);
+        snprintf(line_buffer, sizeof(line_buffer), "Track Left:  %3d%%", ly_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(2, 36);
+        snprintf(line_buffer, sizeof(line_buffer), "Track Right: %3d%%", ry_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(2, 44);
+        snprintf(line_buffer, sizeof(line_buffer), "Outrig Left: %3d%%", lx_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(2, 52);
+        snprintf(line_buffer, sizeof(line_buffer), "Outrig Right:%3d%%", rx_pct);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
     else
     {
         // Invalid mode
         mode_name = "MODE: INVALID";
-        controls[0] = "Check Switch";
-        controls[1] = "Configuration";
-        controls[2] = "";
-        controls[3] = "";
-    }
 
-    // Display mode name
-    OLED_SetCursor(16, 14);
-    OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
+        OLED_SetCursor(15, 14);
+        OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
 
-    // Display controls
-    for (uint8_t i = 0; i < 4; i++)
-    {
-        if (controls[i][0] != '\0')
-        {
-            OLED_SetCursor(2, 28 + i * 9);
-            OLED_WriteString((char*)controls[i], FONT_SIZE_SMALL);
-        }
+        OLED_SetCursor(15, 32);
+        OLED_WriteString("Check Switch", FONT_SIZE_NORMAL);
+        OLED_SetCursor(10, 44);
+        OLED_WriteString("Configuration", FONT_SIZE_NORMAL);
     }
 }
 
