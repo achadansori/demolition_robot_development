@@ -13,18 +13,34 @@ Monitor dan visualisasi real-time untuk 20 channel PWM output dari STM32 Receive
 
 ## Channel List (20 Channels)
 
+Mapping sesuai dengan `control.c` dan `pwm.h`:
+
 ```
-PWM 1-2:   Cylinder 1 OUT/IN (Boom)
-PWM 3-4:   Cylinder 2 OUT/IN (Stick)
-PWM 5-6:   Cylinder 3 OUT/IN (Bucket)
-PWM 7-8:   Cylinder 4 OUT/IN
-PWM 9-10:  Tool 1 / Tool 2
-PWM 11-12: Slew CW / CCW
-PWM 13-14: Outrigger Left UP/DOWN
-PWM 15-16: Outrigger Right UP/DOWN
-PWM 17-18: Track Right FORWARD/BACKWARD
-PWM 19-20: Track Left FORWARD/BACKWARD
+PWM 0-1:   Cylinder 1 OUT/IN (Boom) - RIGHT stick X
+PWM 2-3:   Cylinder 2 OUT/IN (Stick) - RIGHT stick Y
+PWM 4-5:   Cylinder 3 OUT/IN (Bucket) - LEFT stick Y
+PWM 6-7:   Cylinder 4 OUT/IN (unused in current control logic)
+PWM 8-9:   Tool 1 / Tool 2 (unused in current control logic)
+PWM 10-11: Slew CW / CCW - LEFT stick X
+PWM 12-13: Outrigger Left UP/DOWN - LEFT stick X (MODE LOWER)
+PWM 14-15: Outrigger Right UP/DOWN - RIGHT stick X (MODE LOWER)
+PWM 16-17: Track Right FORWARD/BACKWARD - RIGHT stick Y (MODE LOWER)
+PWM 18-19: Track Left FORWARD/BACKWARD - LEFT stick Y (MODE LOWER)
 ```
+
+### Mode UPPER (s5_1=0, s5_2=0) - Excavator
+- **Left Stick Y** → Cylinder 3 (Bucket): PWM[4]=OUT, PWM[5]=IN
+- **Left Stick X** → Slew Rotation: PWM[10]=CW, PWM[11]=CCW
+- **Right Stick Y** → Cylinder 2 (Stick): PWM[2]=OUT, PWM[3]=IN
+- **Right Stick X** → Cylinder 1 (Boom): PWM[0]=OUT, PWM[1]=IN
+
+### Mode LOWER (s5_1=1, s5_2=0) - Mobility
+- **Left Stick Y** → Track Left: PWM[18]=FWD, PWM[19]=BACK
+- **Left Stick X** → Outrigger Left: PWM[12]=UP, PWM[13]=DOWN
+- **Right Stick Y** → Track Right: PWM[16]=FWD, PWM[17]=BACK
+- **Right Stick X** → Outrigger Right: PWM[14]=UP, PWM[15]=DOWN
+
+**Note:** PWM channel index dalam array dimulai dari 0 (bukan 1)
 
 ## Protokol Komunikasi
 

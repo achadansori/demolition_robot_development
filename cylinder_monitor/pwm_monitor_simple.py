@@ -17,13 +17,28 @@ class SimplePWMMonitor:
         self.baudrate = baudrate
         self.serial_port = None
 
-        # Channel names
+        # Channel names matching PWM channel order in pwm.h
         self.channel_names = [
-            'CYL1_OUT', 'CYL1_IN', 'CYL2_OUT', 'CYL2_IN',
-            'CYL3_OUT', 'CYL3_IN', 'CYL4_OUT', 'CYL4_IN',
-            'TOOL1', 'TOOL2', 'SLEW_CW', 'SLEW_CCW',
-            'OUT_L_UP', 'OUT_L_DN', 'OUT_R_UP', 'OUT_R_DN',
-            'TRK_R_FW', 'TRK_R_BK', 'TRK_L_FW', 'TRK_L_BK'
+            # PWM 0-1: Cylinder 1 (Boom)
+            'CYL1_OUT', 'CYL1_IN',
+            # PWM 2-3: Cylinder 2 (Stick)
+            'CYL2_OUT', 'CYL2_IN',
+            # PWM 4-5: Cylinder 3 (Bucket)
+            'CYL3_OUT', 'CYL3_IN',
+            # PWM 6-7: Cylinder 4 (unused)
+            'CYL4_OUT', 'CYL4_IN',
+            # PWM 8-9: Tools (unused)
+            'TOOL1', 'TOOL2',
+            # PWM 10-11: Slew rotation
+            'SLEW_CW', 'SLEW_CCW',
+            # PWM 12-13: Outrigger Left
+            'OUT_L_UP', 'OUT_L_DN',
+            # PWM 14-15: Outrigger Right
+            'OUT_R_UP', 'OUT_R_DN',
+            # PWM 16-17: Track Right
+            'TRK_R_FW', 'TRK_R_BK',
+            # PWM 18-19: Track Left
+            'TRK_L_FW', 'TRK_L_BK'
         ]
 
         # Packet format
