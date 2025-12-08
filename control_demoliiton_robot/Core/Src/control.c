@@ -58,19 +58,19 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         // --------------------------------------------------------------------
         // LEFT STICK Y-AXIS: CYLINDER 3 (Bucket)
         // --------------------------------------------------------------------
-        // joy_left_y: 127→255 = Cylinder 3 OUT (PWM_5) 0→100%
-        //             127→0   = Cylinder 3 IN  (PWM_6) 0→100%
+        // joy_left_y: 127→255 = Cylinder 3 UP   (PWM_5) 0→100%
+        //             127→0   = Cylinder 3 DOWN (PWM_6) 0→100%
 
         if (lora_data->joy_left_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Moving DOWN (0-117) → Cylinder 3 IN
+            // Moving DOWN (0-117) → Cylinder 3 DOWN
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, true);
             PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, pwm_value);
             PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
         }
         else if (lora_data->joy_left_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Moving UP (137-255) → Cylinder 3 OUT
+            // Moving UP (137-255) → Cylinder 3 UP
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, false);
             PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, pwm_value);
             PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
@@ -112,19 +112,19 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         // --------------------------------------------------------------------
         // RIGHT STICK Y-AXIS: CYLINDER 2 (Stick)
         // --------------------------------------------------------------------
-        // joy_right_y: 127→255 = Cylinder 2 IN  (PWM_4) 0→100%
-        //              127→0   = Cylinder 2 OUT (PWM_3) 0→100%
+        // joy_right_y: 127→0   = Cylinder 2 UP   (PWM_3) 0→100%
+        //              127→255 = Cylinder 2 DOWN (PWM_4) 0→100%
 
         if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Moving DOWN (0-117) → Cylinder 2 OUT
+            // Stick DOWN (0-117) → Cylinder 2 UP
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true);
             PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
             PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         }
         else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Moving UP (137-255) → Cylinder 2 IN
+            // Stick UP (137-255) → Cylinder 2 DOWN
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false);
             PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
             PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
@@ -137,21 +137,21 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // RIGHT STICK X-AXIS: CYLINDER 4
+        // RIGHT STICK X-AXIS: CYLINDER 4 (Reversed mapping!)
         // --------------------------------------------------------------------
-        // joy_right_x: 127→255 = Cylinder 4 IN  (PWM_8) 0→100%
-        //              127→0   = Cylinder 4 OUT (PWM_7) 0→100%
+        // joy_right_x: 127→0   = Cylinder 4 DOWN (PWM_7) 0→100%
+        //              127→255 = Cylinder 4 UP   (PWM_8) 0→100%
 
         if (lora_data->joy_right_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Moving LEFT (0-117) → Cylinder 4 OUT
+            // Stick LEFT (0-117) → Cylinder 4 DOWN
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true);
             PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, pwm_value);
             PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
         }
         else if (lora_data->joy_right_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Moving RIGHT (137-255) → Cylinder 4 IN
+            // Stick RIGHT (137-255) → Cylinder 4 UP
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false);
             PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, pwm_value);
             PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
