@@ -248,11 +248,11 @@ void OLED_Init(I2C_HandleTypeDef *hi2c)
     OLED_WriteCommand(SSD1306_SET_COMPINS);
     OLED_WriteCommand(0x12);
     OLED_WriteCommand(SSD1306_SET_CONTRAST);
-    OLED_WriteCommand(0xCF);
+    OLED_WriteCommand(0xFF);  // Maximum contrast (255) for sharper display
     OLED_WriteCommand(SSD1306_SET_PRECHARGE);
     OLED_WriteCommand(0xF1);
     OLED_WriteCommand(SSD1306_SET_VCOM_DETECT);
-    OLED_WriteCommand(0x40);
+    OLED_WriteCommand(0x20);  // Lower VCOM = brighter display (default 0x40)
     OLED_WriteCommand(SSD1306_DISPLAY_ALL_ON_RESUME);
     OLED_WriteCommand(SSD1306_NORMAL_DISPLAY);
     OLED_WriteCommand(SSD1306_DEACTIVATE_SCROLL);
