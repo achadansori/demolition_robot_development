@@ -461,7 +461,7 @@ void OLED_ShowSplashScreen(void)
   * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y, r8, r1]
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress)
 {
     OLED_Clear();
 
@@ -490,12 +490,31 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 
         if (safety_ok)
         {
-            // Safety checks PASSED - ready to exit
-            OLED_SetCursor(8, 36);
-            OLED_WriteString("Controls Centered", FONT_SIZE_NORMAL);
+            // Safety checks PASSED - show hold progress
+            if (hold_progress > 0)
+            {
+                // S2_1 is being held - show progress
+                char progress_text[20];
+                uint8_t percent = (hold_progress * 100) / 20;  // 20 = S2_1_HOLD_REQUIRED
+                snprintf(progress_text, sizeof(progress_text), "Holding: %d%%", percent);
 
-            OLED_SetCursor(3, 48);
-            OLED_WriteString("Press S2_1 to Exit", FONT_SIZE_NORMAL);
+                OLED_SetCursor(28, 32);
+                OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
+
+                // Draw progress bar
+                uint8_t bar_width = (hold_progress * 100) / 20;  // 0-100 pixels
+                OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
+                OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
+            }
+            else
+            {
+                // Ready to hold S2_1
+                OLED_SetCursor(8, 36);
+                OLED_WriteString("Controls Centered", FONT_SIZE_NORMAL);
+
+                OLED_SetCursor(3, 48);
+                OLED_WriteString("Hold S2_1 for 2s", FONT_SIZE_NORMAL);
+            }
         }
         else
         {
