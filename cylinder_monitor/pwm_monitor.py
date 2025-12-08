@@ -86,10 +86,14 @@ class PWMMonitor:
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE
             )
-            # Set larger buffer for better throughput
-            self.serial_port.set_buffer_size(rx_size=8192, tx_size=4096)
+            # Set larger buffer for better throughput (Windows only, skip on Linux)
+            try:
+                self.serial_port.set_buffer_size(rx_size=8192, tx_size=4096)
+            except AttributeError:
+                pass  # set_buffer_size not available on Linux, skip
+
             print(f"✓ Connected to {self.port} @ {self.baudrate} baud")
-            print(f"✓ Optimized for real-time graphing (1ms timeout, 8KB buffer)")
+            print(f"✓ Optimized for real-time graphing (1ms timeout)")
             return True
         except serial.SerialException as e:
             print(f"✗ Failed to open {self.port}: {e}")

@@ -51,8 +51,12 @@ class FastPWMMonitor:
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE
             )
-            # Set larger buffer sizes for better performance
-            self.serial_port.set_buffer_size(rx_size=4096, tx_size=4096)
+            # Set larger buffer sizes for better performance (Windows only)
+            try:
+                self.serial_port.set_buffer_size(rx_size=4096, tx_size=4096)
+            except AttributeError:
+                pass  # set_buffer_size not available on Linux, skip
+
             print(f"✓ Connected to {self.port} @ {self.baudrate} baud")
             print(f"✓ Optimized for minimal latency\n")
             return True
