@@ -461,7 +461,7 @@ void OLED_ShowSplashScreen(void)
   * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y, r8, r1]
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok)
 {
     OLED_Clear();
 
@@ -488,11 +488,30 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         OLED_SetCursor(18, 24);
         OLED_WriteString("** SLEEP MODE **", FONT_SIZE_NORMAL);
 
-        OLED_SetCursor(15, 36);
-        OLED_WriteString("Emergency Active", FONT_SIZE_NORMAL);
+        if (safety_ok)
+        {
+            // Safety checks PASSED - ready to exit
+            OLED_SetCursor(8, 36);
+            OLED_WriteString("Controls Centered", FONT_SIZE_NORMAL);
 
-        OLED_SetCursor(10, 48);
-        OLED_WriteString("All Controls OFF", FONT_SIZE_NORMAL);
+            OLED_SetCursor(3, 48);
+            OLED_WriteString("Press S2_1 to Exit", FONT_SIZE_NORMAL);
+        }
+        else
+        {
+            // Safety checks NOT passed - show instructions
+            OLED_SetCursor(5, 32);
+            OLED_WriteString("Center Joysticks", FONT_SIZE_SMALL);
+
+            OLED_SetCursor(5, 40);
+            OLED_WriteString("Set R1 & R8 to 0", FONT_SIZE_SMALL);
+
+            OLED_SetCursor(5, 48);
+            OLED_WriteString("Release S0 Button", FONT_SIZE_SMALL);
+
+            OLED_SetCursor(5, 56);
+            OLED_WriteString("All Switches OFF", FONT_SIZE_SMALL);
+        }
 
         return;  // Exit early - don't show normal mode info
     }
