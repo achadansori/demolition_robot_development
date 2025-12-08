@@ -510,7 +510,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
             OLED_WriteString("Release S0 Button", FONT_SIZE_SMALL);
 
             OLED_SetCursor(5, 56);
-            OLED_WriteString("S1,S4,S5 OFF", FONT_SIZE_SMALL);
+            OLED_WriteString("S1,S2_2,S4,S5 OFF", FONT_SIZE_SMALL);
         }
 
         return;  // Exit early - don't show normal mode info
