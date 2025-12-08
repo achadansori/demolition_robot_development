@@ -317,6 +317,21 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         // Unknown mode combination - stop all outputs for safety
         Control_EmergencyStop();
     }
+
+    // ========================================================================
+    // MOTOR STARTER CONTROL (PWM_21 on PE6)
+    // ========================================================================
+    // Motor starter is controlled by S1_1 hold logic from transmitter
+    // When motor_active = 1, output 100% PWM to trigger relay/contactor
+    // When motor_active = 0, output 0% PWM to stop motor
+    if (lora_data->motor_active == 1)
+    {
+        PWM_SetDutyCycle(PWM_21_MOTOR_STARTER, 100);  // Full PWM to trigger motor starter
+    }
+    else
+    {
+        PWM_SetDutyCycle(PWM_21_MOTOR_STARTER, 0);    // Stop motor starter
+    }
 }
 
 /**

@@ -1,8 +1,8 @@
 /**
   ******************************************************************************
   * @file           : pwm.h
-  * @brief          : PWM Control for 20 Channels (Demolition Robot)
-  *                   Uses TIM1, TIM2, TIM3, TIM4, TIM8
+  * @brief          : PWM Control for 21 Channels (Demolition Robot)
+  *                   Uses TIM1, TIM2, TIM3, TIM4, TIM8, TIM9
   *
   * @note           PWM Configuration for Hydraulic Proportional Valves:
   *                 - Frequency: 1kHz (1ms period) - OPTIMAL for solenoid valves
@@ -51,7 +51,8 @@ typedef enum {
     PWM_18_TRACK_RIGHT_BACKWARD,   // TIM1_CH3 (PE13)
     PWM_19_TRACK_LEFT_FORWARD,     // TIM4_CH2 (PD13)
     PWM_20_TRACK_LEFT_BACKWARD,    // TIM1_CH4 (PE14)
-    PWM_CHANNEL_COUNT = 20
+    PWM_21_MOTOR_STARTER,          // TIM9_CH2 (PE6) - Motor self-holding trigger
+    PWM_CHANNEL_COUNT = 21
 } PWM_Channel_t;
 
 /* Public function prototypes ------------------------------------------------*/

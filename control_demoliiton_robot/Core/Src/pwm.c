@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file           : pwm.c
-  * @brief          : PWM Control Implementation for 20 Channels (Register-based)
+  * @brief          : PWM Control Implementation for 21 Channels (Register-based)
   *                   Uses direct register access like working example
   ******************************************************************************
   */
@@ -28,6 +28,7 @@ static void PWM_TIM2_Init(void);
 static void PWM_TIM3_Init(void);
 static void PWM_TIM4_Init(void);
 static void PWM_TIM8_Init(void);
+static void PWM_TIM9_Init(void);
 
 /**
   * @brief  Initialize all PWM channels
@@ -44,6 +45,7 @@ void PWM_Init(void)
     PWM_TIM3_Init();
     PWM_TIM4_Init();
     PWM_TIM8_Init();
+    PWM_TIM9_Init();
 
     // Initialize all channels to 0%
     PWM_StopAll();
@@ -96,6 +98,13 @@ static void PWM_ConfigureGPIO(void)
     GPIOC->AFR[1] &= ~((0xF<<((8-8)*4)) | (0xF<<((9-8)*4)));
     GPIOC->AFR[1] |= (3<<((8-8)*4)) | (3<<((9-8)*4));  // AF3
     GPIOC->OSPEEDR |= (3<<(6*2)) | (3<<(7*2)) | (3<<(8*2)) | (3<<(9*2));
+
+    // Configure TIM9 pin (PE6) - AF3
+    GPIOE->MODER &= ~(3<<(6*2));
+    GPIOE->MODER |= (2<<(6*2));  // Alternate function
+    GPIOE->AFR[0] &= ~(0xF<<(6*4));
+    GPIOE->AFR[0] |= (3<<(6*4));  // AF3
+    GPIOE->OSPEEDR |= (3<<(6*2));  // High speed
 }
 
 /**
@@ -295,8 +304,41 @@ static void PWM_TIM8_Init(void)
 }
 
 /**
+  * @brief  Initialize TIM9 (General-purpose timer) for PWM - APB2 168MHz
+  * @retval None
+  */
+static void PWM_TIM9_Init(void)
+{
+    // Enable TIM9 clock
+    RCC->APB2ENR |= RCC_APB2ENR_TIM9EN;
+
+    // Configure timer
+    TIM9->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
+    TIM9->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+
+    // Configure channel 2 as PWM mode 1 (PE6 = TIM9_CH2)
+    TIM9->CCMR1 &= ~TIM_CCMR1_OC2M;
+    TIM9->CCMR1 |= (6 << TIM_CCMR1_OC2M_Pos);  // PWM mode 1
+    TIM9->CCMR1 |= TIM_CCMR1_OC2PE;           // Preload enable
+
+    // Set initial duty cycle to 0
+    TIM9->CCR2 = 0;
+
+    // Enable channel 2
+    TIM9->CCER |= TIM_CCER_CC2E;
+
+    // Enable auto-reload preload
+    TIM9->CR1 |= TIM_CR1_ARPE;
+
+    // NOTE: TIM9 is general-purpose timer (not advanced), so no BDTR_MOE needed
+
+    // Start timer
+    TIM9->CR1 |= TIM_CR1_CEN;
+}
+
+/**
   * @brief  Set PWM duty cycle for a channel
-  * @param  channel: PWM channel (0-19)
+  * @param  channel: PWM channel (0-20)
   * @param  duty_percent: Duty cycle percentage (0-100)
   * @retval None
   */
@@ -344,13 +386,16 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
         case PWM_18_TRACK_RIGHT_BACKWARD: TIM1->CCR3 = ccr_value; break;  // PE13
         case PWM_20_TRACK_LEFT_BACKWARD:  TIM1->CCR4 = ccr_value; break;  // PE14
 
+        // TIM9 channels
+        case PWM_21_MOTOR_STARTER:  TIM9->CCR2 = ccr_value; break;  // PE6
+
         default: break;
     }
 }
 
 /**
   * @brief  Get current duty cycle for a channel
-  * @param  channel: PWM channel (0-19)
+  * @param  channel: PWM channel (0-20)
   * @retval Duty cycle percentage (0-100)
   */
 uint8_t PWM_GetDutyCycle(PWM_Channel_t channel)

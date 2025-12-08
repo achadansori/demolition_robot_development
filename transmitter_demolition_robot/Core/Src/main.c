@@ -114,6 +114,11 @@ int main(void)
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
   #define S2_1_HOLD_REQUIRED 20      // 20 cycles x 100ms = 2 seconds hold required
 
+  // Motor starter variables (S1_1 hold logic)
+  uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
+  uint8_t s1_1_hold_counter = 0;   // Counter for S1_1 hold duration
+  #define S1_1_HOLD_REQUIRED 20    // 20 cycles x 100ms = 2 seconds hold required
+
   // Safety tolerances for exiting SLEEP mode
   #define JOYSTICK_CENTER 127
   #define JOYSTICK_TOLERANCE 5   // ±5 points tolerance
@@ -356,6 +361,42 @@ int main(void)
         safety_check_passed = 0;
         last_s2_1_state = tx_data.switches.s2_1;
     }
+
+    // ========================================================================
+    // MOTOR STARTER CONTROL - S1_1 hold logic (works even in SLEEP mode)
+    // ========================================================================
+    // Motor can only be started when S1_1 is held for 2 seconds
+    // Motor stops immediately when S1_1 is released (safety feature)
+    if (!sleep_mode_active)  // Only allow motor control when not in SLEEP
+    {
+        if (tx_data.switches.s1_1 == 1)
+        {
+            // S1_1 is pressed - increment hold counter
+            s1_1_hold_counter++;
+
+            // Check if held long enough
+            if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
+            {
+                // S1_1 held for 2 seconds - ACTIVATE MOTOR
+                motor_active = 1;
+            }
+        }
+        else
+        {
+            // S1_1 released - IMMEDIATELY stop motor (safety!)
+            s1_1_hold_counter = 0;
+            motor_active = 0;
+        }
+    }
+    else
+    {
+        // In SLEEP mode - force motor OFF
+        motor_active = 0;
+        s1_1_hold_counter = 0;
+    }
+
+    // Update motor state in tx_data before transmission
+    tx_data.switches.motor_active = motor_active;
 
     // Transmit via LoRa using BINARY format (FAST! No parsing needed)
     // Binary is much faster than CSV - only 8 bytes, direct copy

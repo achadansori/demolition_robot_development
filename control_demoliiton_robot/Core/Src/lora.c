@@ -332,4 +332,5 @@ static void LoRa_ParseBinaryPacket(void)
     received_data.s4_2 = (switches >> 10) & 0x01;
     received_data.s5_1 = (switches >> 11) & 0x01;
     received_data.s5_2 = (switches >> 12) & 0x01;
+    received_data.motor_active = (switches >> 13) & 0x01;  // Motor starter trigger
 }
