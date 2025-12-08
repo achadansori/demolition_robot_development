@@ -109,8 +109,10 @@ int main(void)
   uint8_t sleep_transition_steps = 0;
   uint8_t safety_check_passed = 0;
   uint8_t last_s2_1_state = 0;
+  uint8_t s2_1_hold_counter = 0;
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
+  #define S2_1_HOLD_REQUIRED 20      // 20 cycles x 100ms = 2 seconds hold required
 
   // Safety tolerances for exiting SLEEP mode
   #define JOYSTICK_CENTER 127
@@ -189,6 +191,7 @@ int main(void)
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
             safety_check_passed = 0;
+            s2_1_hold_counter = 0;
         }
 
         // Fast smooth transition to default values (10 steps = 100ms)
@@ -285,18 +288,31 @@ int main(void)
             switches_safe = 1;
         }
 
-        // Step 2: If all safety checks pass, wait for S2_1 press to exit
+        // Step 2: If all safety checks pass, wait for S2_1 HOLD to exit
         if (joystick_safe && resistor_safe && switches_safe)
         {
             safety_check_passed = 1;
 
-            // Detect S2_1 rising edge (press event)
-            if (tx_data.switches.s2_1 == 1 && last_s2_1_state == 0)
+            // S2_1 must be held for S2_1_HOLD_REQUIRED cycles (2 seconds)
+            if (tx_data.switches.s2_1 == 1)
             {
-                // S2_1 pressed while all controls safe - EXIT SLEEP MODE
-                sleep_mode_active = 0;
-                sleep_transition_steps = 0;
-                safety_check_passed = 0;
+                // S2_1 is pressed - increment hold counter
+                s2_1_hold_counter++;
+
+                // Check if held long enough
+                if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
+                {
+                    // S2_1 held for 2 seconds - EXIT SLEEP MODE
+                    sleep_mode_active = 0;
+                    sleep_transition_steps = 0;
+                    safety_check_passed = 0;
+                    s2_1_hold_counter = 0;
+                }
+            }
+            else
+            {
+                // S2_1 released before hold time completed - reset counter
+                s2_1_hold_counter = 0;
             }
 
             last_s2_1_state = tx_data.switches.s2_1;
@@ -306,6 +322,7 @@ int main(void)
             // Safety check failed - reset state
             safety_check_passed = 0;
             last_s2_1_state = 0;
+            s2_1_hold_counter = 0;
 
             // Override transmitted data to safe values during SLEEP
             tx_data.joystick.left_x  = 127;
@@ -356,19 +373,22 @@ int main(void)
     }
 
     // Update OLED display with mode info and percentages (every 10 cycles = 1 second)
-    // Update immediately when entering/exiting SLEEP mode or when safety status changes
+    // Update immediately when entering/exiting SLEEP mode, safety status changes, or hold progress changes
     static uint8_t oled_counter = 0;
     static uint8_t last_sleep_state = 0;
     static uint8_t last_safety_state = 0;
+    static uint8_t last_hold_counter = 0;
 
     if (sleep_mode_active != last_sleep_state ||
         safety_check_passed != last_safety_state ||
+        s2_1_hold_counter != last_hold_counter ||
         ++oled_counter >= 10)
     {
         oled_counter = 0;
         last_sleep_state = sleep_mode_active;
         last_safety_state = safety_check_passed;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed);
+        last_hold_counter = s2_1_hold_counter;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, s2_1_hold_counter);
         OLED_Update();
     }
 
