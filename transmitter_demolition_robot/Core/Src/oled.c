@@ -230,33 +230,50 @@ void OLED_Init(I2C_HandleTypeDef *hi2c)
 
     HAL_Delay(100); // Wait for OLED to power up
 
-    // Init sequence for SSD1306
+    // Init sequence optimized for SSD1309 (compatible with SSD1306)
     OLED_WriteCommand(SSD1306_DISPLAY_OFF);
+
+    // Display clock divide ratio and oscillator frequency
     OLED_WriteCommand(SSD1306_SET_DISPLAY_CLOCK_DIV);
-    OLED_WriteCommand(0x80);
+    OLED_WriteCommand(0xF0);  // SSD1309: Higher frequency for better refresh (default 0x80)
+
     OLED_WriteCommand(SSD1306_SET_MULTIPLEX);
-    OLED_WriteCommand(0x3F);
+    OLED_WriteCommand(0x3F);  // 64 MUX ratio for 64-row display
+
     OLED_WriteCommand(SSD1306_SET_DISPLAY_OFFSET);
-    OLED_WriteCommand(0x00);
-    OLED_WriteCommand(SSD1306_SET_START_LINE | 0x00);
+    OLED_WriteCommand(0x00);  // No display offset
+
+    OLED_WriteCommand(SSD1306_SET_START_LINE | 0x00);  // Start line 0
+
+    // Charge pump (internal DC/DC converter)
     OLED_WriteCommand(SSD1306_CHARGE_PUMP);
-    OLED_WriteCommand(0x14);
+    OLED_WriteCommand(0x14);  // Enable charge pump (0x14) for VCC generated from 3.3V
+
     OLED_WriteCommand(SSD1306_MEMORY_MODE);
-    OLED_WriteCommand(0x00);
-    OLED_WriteCommand(SSD1306_SEG_REMAP | 0x01);
-    OLED_WriteCommand(SSD1306_COM_SCAN_DEC);
+    OLED_WriteCommand(0x00);  // Horizontal addressing mode
+
+    OLED_WriteCommand(SSD1306_SEG_REMAP | 0x01);  // Column address 127 mapped to SEG0
+    OLED_WriteCommand(SSD1306_COM_SCAN_DEC);      // Scan from COM[N-1] to COM0
+
     OLED_WriteCommand(SSD1306_SET_COMPINS);
-    OLED_WriteCommand(0x12);
+    OLED_WriteCommand(0x12);  // Alternative COM pin config, disable left/right remap
+
+    // Contrast control - SSD1309 specific
     OLED_WriteCommand(SSD1306_SET_CONTRAST);
-    OLED_WriteCommand(0xFF);  // Maximum contrast (255) for sharper display
+    OLED_WriteCommand(0xFF);  // Maximum contrast (0xFF = 255) for clearest display
+
+    // Pre-charge period - SSD1309 optimized
     OLED_WriteCommand(SSD1306_SET_PRECHARGE);
-    OLED_WriteCommand(0xF1);
+    OLED_WriteCommand(0x22);  // SSD1309: Phase1=2 DCLKs, Phase2=2 DCLKs (0x22) for sharper image
+
+    // VCOM Deselect Level - SSD1309 specific
     OLED_WriteCommand(SSD1306_SET_VCOM_DETECT);
-    OLED_WriteCommand(0x20);  // Lower VCOM = brighter display (default 0x40)
-    OLED_WriteCommand(SSD1306_DISPLAY_ALL_ON_RESUME);
-    OLED_WriteCommand(SSD1306_NORMAL_DISPLAY);
-    OLED_WriteCommand(SSD1306_DEACTIVATE_SCROLL);
-    OLED_WriteCommand(SSD1306_DISPLAY_ON);
+    OLED_WriteCommand(0x35);  // SSD1309 optimal: 0.77*VCC (0x35 = brightest without flicker)
+
+    OLED_WriteCommand(SSD1306_DISPLAY_ALL_ON_RESUME);  // Resume to RAM content display
+    OLED_WriteCommand(SSD1306_NORMAL_DISPLAY);         // Normal display (not inverted)
+    OLED_WriteCommand(SSD1306_DEACTIVATE_SCROLL);      // Disable scroll
+    OLED_WriteCommand(SSD1306_DISPLAY_ON);             // Turn on display
 
     OLED_Clear();
     OLED_Update();

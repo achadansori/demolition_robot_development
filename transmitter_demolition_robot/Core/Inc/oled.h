@@ -1,7 +1,8 @@
 /**
   ******************************************************************************
   * @file           : oled.h
-  * @brief          : SSD1306 OLED Display Driver (128x64 I2C)
+  * @brief          : SSD1309/SSD1306 OLED Display Driver (128x64 I2C)
+  *                   Optimized for SSD1309 with compatibility for SSD1306
   *                   PB6 = I2C1_SCL, PB7 = I2C1_SDA
   ******************************************************************************
   */
@@ -19,7 +20,7 @@ extern "C" {
 #include <string.h>
 
 /* Defines -------------------------------------------------------------------*/
-#define OLED_I2C_ADDR       0x78    // SSD1306 I2C address (0x3C << 1)
+#define OLED_I2C_ADDR       0x78    // SSD1309/SSD1306 I2C address (0x3C << 1)
 #define OLED_WIDTH          128     // OLED width in pixels
 #define OLED_HEIGHT         64      // OLED height in pixels
 #define OLED_BUFFER_SIZE    (OLED_WIDTH * OLED_HEIGHT / 8)
