@@ -15,14 +15,14 @@ import sys
 
 
 class PWMMonitor:
-    def __init__(self, port='/dev/ttyACM0', baudrate=115200, history_size=50):
+    def __init__(self, port='/dev/ttyACM0', baudrate=115200, history_size=30):
         """
         Initialize PWM Monitor
 
         Args:
             port: Serial port for STM32 receiver
             baudrate: Serial baudrate
-            history_size: Number of samples to keep in history
+            history_size: Number of samples to keep in history (default: 30 for faster rendering)
         """
         self.port = port
         self.baudrate = baudrate
@@ -30,6 +30,9 @@ class PWMMonitor:
 
         # Serial connection
         self.serial_port = None
+
+        # Buffer for optimized serial reading
+        self.buffer = bytearray()
 
         # Data storage - 20 channels
         # Channel names matching PWM channel order in pwm.h
@@ -73,17 +76,20 @@ class PWMMonitor:
         self.x_data = np.arange(history_size)
 
     def connect(self):
-        """Connect to serial port"""
+        """Connect to serial port with optimized settings for real-time performance"""
         try:
             self.serial_port = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
-                timeout=1.0,
+                timeout=0.001,  # 1ms timeout for minimal latency
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE
             )
+            # Set larger buffer for better throughput
+            self.serial_port.set_buffer_size(rx_size=8192, tx_size=4096)
             print(f"✓ Connected to {self.port} @ {self.baudrate} baud")
+            print(f"✓ Optimized for real-time graphing (1ms timeout, 8KB buffer)")
             return True
         except serial.SerialException as e:
             print(f"✗ Failed to open {self.port}: {e}")
@@ -96,41 +102,63 @@ class PWMMonitor:
             checksum ^= byte
         return checksum
 
+    def find_packet(self):
+        """Find and parse packet from buffer - optimized for speed"""
+        while len(self.buffer) >= 23:  # Minimum packet size
+            # Find header
+            header_pos = -1
+            for i in range(len(self.buffer) - 1):
+                if self.buffer[i] == self.HEADER_1 and self.buffer[i+1] == self.HEADER_2:
+                    header_pos = i
+                    break
+
+            if header_pos == -1:
+                # No header found, keep last byte (might be start of header)
+                self.buffer = self.buffer[-1:]
+                return None
+
+            # Remove data before header
+            if header_pos > 0:
+                self.buffer = self.buffer[header_pos:]
+
+            # Check if we have full packet
+            if len(self.buffer) < 23:
+                return None
+
+            # Extract packet
+            data = self.buffer[2:22]  # 20 bytes of PWM data
+            checksum_received = self.buffer[22]
+
+            # Verify checksum
+            checksum_calculated = self.calculate_checksum(data)
+
+            if checksum_calculated == checksum_received:
+                # Valid packet - remove from buffer and return
+                self.buffer = self.buffer[23:]
+                pwm_values = list(struct.unpack('20B', data))
+                return pwm_values
+            else:
+                # Invalid checksum - remove header and try again
+                self.buffer = self.buffer[2:]
+
+        return None
+
     def read_packet(self):
-        """Read and parse one packet from serial"""
+        """Read buffered data from serial and parse packets"""
         if not self.serial_port or not self.serial_port.is_open:
             return None
 
         try:
-            # Look for header
-            while True:
-                byte1 = self.serial_port.read(1)
-                if not byte1:
-                    return None
+            # Read all available data at once (buffered for speed)
+            waiting = self.serial_port.in_waiting
+            if waiting > 0:
+                new_data = self.serial_port.read(waiting)
+                self.buffer.extend(new_data)
 
-                if byte1[0] == self.HEADER_1:
-                    byte2 = self.serial_port.read(1)
-                    if byte2 and byte2[0] == self.HEADER_2:
-                        # Found header, read rest of packet
-                        data = self.serial_port.read(20)  # 20 PWM values
-                        if len(data) != 20:
-                            continue
-
-                        checksum = self.serial_port.read(1)
-                        if not checksum:
-                            continue
-
-                        # Verify checksum
-                        calculated = self.calculate_checksum(data)
-                        if calculated == checksum[0]:
-                            # Valid packet, unpack data
-                            pwm_values = list(struct.unpack('20B', data))
-                            return pwm_values
-                        else:
-                            print(f"⚠ Checksum error: got {checksum[0]}, expected {calculated}")
+            # Try to extract a packet
+            return self.find_packet()
 
         except Exception as e:
-            print(f"✗ Read error: {e}")
             return None
 
     def update_data(self):
@@ -240,18 +268,21 @@ class PWMMonitor:
             return
 
         print(f"\n{'='*60}")
-        print(f"PWM Monitor Running - Optimized")
+        print(f"PWM Monitor Running - ULTRA REALTIME")
         print(f"Port: {self.port} @ {self.baudrate} baud")
         print(f"Channels: {self.num_channels}")
-        print(f"Update Rate: 50Hz (20ms interval)")
+        print(f"Update Rate: ~100Hz (10ms interval)")
+        print(f"Serial: 1ms timeout, buffered reading")
+        print(f"History: {self.history_size} samples")
         print(f"{'='*60}\n")
 
         # Setup plot
         self.setup_plot()
 
-        # Start animation with faster interval and blitting
-        # interval=20 means 50Hz update rate (very responsive)
-        ani = FuncAnimation(self.fig, self.animate, interval=20, blit=True, cache_frame_data=False)
+        # Start animation with ultra-fast interval and blitting
+        # interval=10 means ~100Hz update rate (ultra responsive!)
+        # Lower history_size + buffered serial = minimal latency
+        ani = FuncAnimation(self.fig, self.animate, interval=10, blit=True, cache_frame_data=False)
 
         try:
             plt.show(block=True)
@@ -264,13 +295,13 @@ class PWMMonitor:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='PWM Monitor for Demolition Robot (Optimized)')
+    parser = argparse.ArgumentParser(description='PWM Monitor for Demolition Robot (Ultra Realtime)')
     parser.add_argument('-p', '--port', default='/dev/ttyACM0',
                        help='Serial port (default: /dev/ttyACM0)')
     parser.add_argument('-b', '--baudrate', type=int, default=115200,
                        help='Baudrate (default: 115200)')
-    parser.add_argument('-s', '--history', type=int, default=50,
-                       help='History buffer size in samples (default: 50, smaller = faster)')
+    parser.add_argument('-s', '--history', type=int, default=30,
+                       help='History buffer size in samples (default: 30, smaller = faster rendering)')
 
     args = parser.parse_args()
 
