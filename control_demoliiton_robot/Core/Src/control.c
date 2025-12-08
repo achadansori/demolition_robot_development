@@ -137,30 +137,30 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // RIGHT STICK X-AXIS: CYLINDER 1 (Boom)
+        // RIGHT STICK X-AXIS: CYLINDER 4
         // --------------------------------------------------------------------
-        // joy_right_x: 127→255 = Cylinder 1 IN  (PWM_2) 0→100%
-        //              127→0   = Cylinder 1 OUT (PWM_1) 0→100%
+        // joy_right_x: 127→255 = Cylinder 4 IN  (PWM_8) 0→100%
+        //              127→0   = Cylinder 4 OUT (PWM_7) 0→100%
 
         if (lora_data->joy_right_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Moving LEFT (0-117) → Cylinder 1 OUT
+            // Moving LEFT (0-117) → Cylinder 4 OUT
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true);
-            PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, pwm_value);
-            PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+            PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, pwm_value);
+            PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
         }
         else if (lora_data->joy_right_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Moving RIGHT (137-255) → Cylinder 1 IN
+            // Moving RIGHT (137-255) → Cylinder 4 IN
             uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false);
-            PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, pwm_value);
-            PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
+            PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, pwm_value);
+            PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
         }
         else
         {
             // Deadzone - stop both
-            PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-            PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+            PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
+            PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
         }
 
         // Stop all mobility controls in UPPER mode

@@ -512,8 +512,8 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
                 OLED_SetCursor(8, 36);
                 OLED_WriteString("Controls Centered", FONT_SIZE_NORMAL);
 
-                OLED_SetCursor(3, 48);
-                OLED_WriteString("Hold S2_1 for 2s", FONT_SIZE_NORMAL);
+                OLED_SetCursor(15, 48);
+                OLED_WriteString("Hold S2 UP", FONT_SIZE_NORMAL);
             }
         }
         else
@@ -561,7 +561,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 
         // Display cylinders with percentages
         OLED_SetCursor(2, 28);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL1 Boom:  %3d%%", rx_pct);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL4:       %3d%%", rx_pct);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(2, 36);
