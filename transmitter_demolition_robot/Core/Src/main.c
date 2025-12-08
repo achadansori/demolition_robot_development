@@ -265,15 +265,16 @@ int main(void)
             resistor_safe = 1;
         }
 
-        // Check all switches are 0 (except S0 which we already checked)
+        // Check all switches are 0 (except S0 and S2 which are excluded)
+        // S0 is emergency button (already checked above)
+        // S2 is excluded so user can press S2_1 to exit SLEEP mode
         if ((tx_data.switches.joy_left_btn1  == 0) &&
             (tx_data.switches.joy_left_btn2  == 0) &&
             (tx_data.switches.joy_right_btn1 == 0) &&
             (tx_data.switches.joy_right_btn2 == 0) &&
             (tx_data.switches.s1_1 == 0) &&
             (tx_data.switches.s1_2 == 0) &&
-            (tx_data.switches.s2_1 == 0) &&  // S2_1 must be 0 initially
-            (tx_data.switches.s2_2 == 0) &&
+            // S2_1 and S2_2 NOT checked - S2_1 is used to exit SLEEP mode
             (tx_data.switches.s4_1 == 0) &&
             (tx_data.switches.s4_2 == 0) &&
             (tx_data.switches.s5_1 == 0) &&
