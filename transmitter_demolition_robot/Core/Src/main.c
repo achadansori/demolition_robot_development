@@ -105,9 +105,17 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   // SLEEP mode variables
-  uint8_t sleep_mode_active = 0;
+  uint8_t sleep_mode_active = 1;  // Start in SLEEP mode for safety!
   uint8_t sleep_transition_steps = 0;
+  uint8_t safety_check_passed = 0;
+  uint8_t last_s2_1_state = 0;
+
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
+
+  // Safety tolerances for exiting SLEEP mode
+  #define JOYSTICK_CENTER 127
+  #define JOYSTICK_TOLERANCE 5   // ±5 points tolerance
+  #define RESISTOR_TOLERANCE 10  // ±10 points tolerance for R1/R8
 
   // Initialize M0 and M1 GPIO pins for LoRa (PB8=M0, PB9=M1)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -168,16 +176,19 @@ int main(void)
     Var_Update();
 
     // ========================================================================
-    // SLEEP MODE - Emergency Safety Feature
-    // When S0 = 0 (emergency button pressed), default all controls to safe position
+    // SLEEP MODE - Emergency Safety Feature with Safety Interlock
     // ========================================================================
+
     if (tx_data.switches.s0 == 0)
     {
-        // Emergency button pressed - enter SLEEP mode
+        // ====================================================================
+        // S0 = 0 (Emergency button pressed) - FORCE SLEEP MODE
+        // ====================================================================
         if (!sleep_mode_active)
         {
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
+            safety_check_passed = 0;
         }
 
         // Fast smooth transition to default values (10 steps = 100ms)
@@ -223,15 +234,107 @@ int main(void)
         tx_data.switches.s5_1 = 0;
         tx_data.switches.s5_2 = 0;
     }
+    else if (sleep_mode_active)
+    {
+        // ====================================================================
+        // S0 = 1, but still in SLEEP mode - Check Safety Interlock to Exit
+        // ====================================================================
+
+        // Step 1: Check if all controls are in SAFE position
+        uint8_t joystick_safe = 0;
+        uint8_t resistor_safe = 0;
+        uint8_t switches_safe = 0;
+
+        // Check joysticks are centered (127 ± 5)
+        if ((tx_data.joystick.left_x  >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.left_x  <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.left_y  >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.left_y  <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_x >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_x <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_y >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_y <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE))
+        {
+            joystick_safe = 1;
+        }
+
+        // Check R1 and R8 are at 0 (0 ± 10)
+        if ((tx_data.joystick.r1 <= RESISTOR_TOLERANCE) &&
+            (tx_data.joystick.r8 <= RESISTOR_TOLERANCE))
+        {
+            resistor_safe = 1;
+        }
+
+        // Check all switches are 0 (except S0 which we already checked)
+        if ((tx_data.switches.joy_left_btn1  == 0) &&
+            (tx_data.switches.joy_left_btn2  == 0) &&
+            (tx_data.switches.joy_right_btn1 == 0) &&
+            (tx_data.switches.joy_right_btn2 == 0) &&
+            (tx_data.switches.s1_1 == 0) &&
+            (tx_data.switches.s1_2 == 0) &&
+            (tx_data.switches.s2_1 == 0) &&  // S2_1 must be 0 initially
+            (tx_data.switches.s2_2 == 0) &&
+            (tx_data.switches.s4_1 == 0) &&
+            (tx_data.switches.s4_2 == 0) &&
+            (tx_data.switches.s5_1 == 0) &&
+            (tx_data.switches.s5_2 == 0))
+        {
+            switches_safe = 1;
+        }
+
+        // Step 2: If all safety checks pass, wait for S2_1 press to exit
+        if (joystick_safe && resistor_safe && switches_safe)
+        {
+            safety_check_passed = 1;
+
+            // Detect S2_1 rising edge (press event)
+            if (tx_data.switches.s2_1 == 1 && last_s2_1_state == 0)
+            {
+                // S2_1 pressed while all controls safe - EXIT SLEEP MODE
+                sleep_mode_active = 0;
+                sleep_transition_steps = 0;
+                safety_check_passed = 0;
+            }
+
+            last_s2_1_state = tx_data.switches.s2_1;
+        }
+        else
+        {
+            // Safety check failed - reset state
+            safety_check_passed = 0;
+            last_s2_1_state = 0;
+
+            // Override transmitted data to safe values during SLEEP
+            tx_data.joystick.left_x  = 127;
+            tx_data.joystick.left_y  = 127;
+            tx_data.joystick.right_x = 127;
+            tx_data.joystick.right_y = 127;
+            tx_data.joystick.r1 = 0;
+            tx_data.joystick.r8 = 0;
+
+            // All switches to 0
+            tx_data.switches.joy_left_btn1  = 0;
+            tx_data.switches.joy_left_btn2  = 0;
+            tx_data.switches.joy_right_btn1 = 0;
+            tx_data.switches.joy_right_btn2 = 0;
+            tx_data.switches.s1_1 = 0;
+            tx_data.switches.s1_2 = 0;
+            tx_data.switches.s2_1 = 0;
+            tx_data.switches.s2_2 = 0;
+            tx_data.switches.s4_1 = 0;
+            tx_data.switches.s4_2 = 0;
+            tx_data.switches.s5_1 = 0;
+            tx_data.switches.s5_2 = 0;
+        }
+    }
     else
     {
-        // S0 = 1 (normal operation) - exit SLEEP mode
-        if (sleep_mode_active)
-        {
-            sleep_mode_active = 0;
-            sleep_transition_steps = 0;
-        }
-        // Normal operation - use actual sensor readings (already in tx_data from Var_Update)
+        // ====================================================================
+        // Normal operation - S0 = 1 and not in SLEEP mode
+        // ====================================================================
+        // Use actual sensor readings (already in tx_data from Var_Update)
+        safety_check_passed = 0;
+        last_s2_1_state = tx_data.switches.s2_1;
     }
 
     // Transmit via LoRa using BINARY format (FAST! No parsing needed)
@@ -250,15 +353,19 @@ int main(void)
     }
 
     // Update OLED display with mode info and percentages (every 10 cycles = 1 second)
-    // Update immediately when entering/exiting SLEEP mode for responsive feedback
+    // Update immediately when entering/exiting SLEEP mode or when safety status changes
     static uint8_t oled_counter = 0;
     static uint8_t last_sleep_state = 0;
+    static uint8_t last_safety_state = 0;
 
-    if (sleep_mode_active != last_sleep_state || ++oled_counter >= 10)
+    if (sleep_mode_active != last_sleep_state ||
+        safety_check_passed != last_safety_state ||
+        ++oled_counter >= 10)
     {
         oled_counter = 0;
         last_sleep_state = sleep_mode_active;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active);
+        last_safety_state = safety_check_passed;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed);
         OLED_Update();
     }
 
