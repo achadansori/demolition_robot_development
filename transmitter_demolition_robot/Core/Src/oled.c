@@ -572,21 +572,21 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         uint8_t slew_ccw = (left_x < 127) ? ((127 - left_x) * 100) / 127 : 0;
         uint8_t slew_cw = (left_x > 127) ? ((left_x - 127) * 100) / 128 : 0;
 
-        // Display format: "CYL X UP=XX%|DOWN=XX%"
+        // Display format: "CYL X UP=XX% DOWN=XX%"
         OLED_SetCursor(0, 16);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL2 UP=%d%%|DOWN=%d%%", c2_up, c2_dn);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL2 UP=%d%% DOWN=%d%%", c2_up, c2_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 24);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL3 UP=%d%%|DOWN=%d%%", c3_up, c3_dn);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL3 UP=%d%% DOWN=%d%%", c3_up, c3_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 32);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL4 UP=%d%%|DOWN=%d%%", c4_up, c4_dn);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL4 UP=%d%% DOWN=%d%%", c4_up, c4_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 40);
-        snprintf(line_buffer, sizeof(line_buffer), "SLEW CCW=%d%%|CW=%d%%", slew_ccw, slew_cw);
+        snprintf(line_buffer, sizeof(line_buffer), "SLEW CCW=%d%% CW=%d%%", slew_ccw, slew_cw);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
     else if (s5_1 == 1 && s5_2 == 0)
@@ -629,11 +629,11 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 
         // Display format
         OLED_SetCursor(0, 16);
-        snprintf(line_buffer, sizeof(line_buffer), "TRK L F=%d%%|B=%d%%", tl_fwd, tl_bwd);
+        snprintf(line_buffer, sizeof(line_buffer), "TRK L F=%d%% B=%d%%", tl_fwd, tl_bwd);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 24);
-        snprintf(line_buffer, sizeof(line_buffer), "TRK R F=%d%%|B=%d%%", tr_fwd, tr_bwd);
+        snprintf(line_buffer, sizeof(line_buffer), "TRK R F=%d%% B=%d%%", tr_fwd, tr_bwd);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 32);
