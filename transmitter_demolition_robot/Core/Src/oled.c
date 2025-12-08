@@ -541,15 +541,9 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
     uint8_t right_x = joystick_data[2];
     uint8_t right_y = joystick_data[3];
 
-    // Convert to percentage (0-255 -> 0-100%)
-    uint8_t lx_pct = (left_x * 100) / 255;
-    uint8_t ly_pct = (left_y * 100) / 255;
-    uint8_t rx_pct = (right_x * 100) / 255;
-    uint8_t ry_pct = (right_y * 100) / 255;
-
     // Determine mode
     const char *mode_name;
-    char line_buffer[20];
+    char line_buffer[22];
 
     if (s5_1 == 0 && s5_2 == 0)
     {
@@ -559,21 +553,37 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         OLED_SetCursor(20, 14);
         OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
 
-        // Display cylinders with percentages
+        // Calculate UP/DOWN percentages (127 center, ±127 range)
+        // CYL4: right_x < 127 = DOWN, right_x > 127 = UP (reversed!)
+        uint8_t c4_up = (right_x > 127) ? ((right_x - 127) * 100) / 128 : 0;
+        uint8_t c4_dn = (right_x < 127) ? ((127 - right_x) * 100) / 127 : 0;
+
+        // CYL2: right_y < 127 = UP, right_y > 127 = DOWN
+        uint8_t c2_up = (right_y < 127) ? ((127 - right_y) * 100) / 127 : 0;
+        uint8_t c2_dn = (right_y > 127) ? ((right_y - 127) * 100) / 128 : 0;
+
+        // CYL3: left_y < 127 = UP, left_y > 127 = DOWN
+        uint8_t c3_up = (left_y < 127) ? ((127 - left_y) * 100) / 127 : 0;
+        uint8_t c3_dn = (left_y > 127) ? ((left_y - 127) * 100) / 128 : 0;
+
+        // Display cylinders with separated UP/DOWN percentages
         OLED_SetCursor(2, 28);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL4:       %3d%%", rx_pct);
+        snprintf(line_buffer, sizeof(line_buffer), "C4 U%2d D%2d", c4_up, c4_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(2, 36);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL2 Stick: %3d%%", ry_pct);
+        snprintf(line_buffer, sizeof(line_buffer), "C2 U%2d D%2d", c2_up, c2_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(2, 44);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL3 Bucket:%3d%%", ly_pct);
+        snprintf(line_buffer, sizeof(line_buffer), "C3 U%2d D%2d", c3_up, c3_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
+        // Slew: left_x
+        uint8_t slew_cw = (left_x < 127) ? ((127 - left_x) * 100) / 127 : 0;
+        uint8_t slew_ccw = (left_x > 127) ? ((left_x - 127) * 100) / 128 : 0;
         OLED_SetCursor(2, 52);
-        snprintf(line_buffer, sizeof(line_buffer), "Slew CW/CCW:%3d%%", lx_pct);
+        snprintf(line_buffer, sizeof(line_buffer), "Slew CW%2d CCW%2d", slew_cw, slew_ccw);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
     else if (s5_1 == 1 && s5_2 == 0)
