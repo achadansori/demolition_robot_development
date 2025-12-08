@@ -574,22 +574,18 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 
         // Display format: "CYL X UP=XX%|DOWN=XX%"
         OLED_SetCursor(0, 16);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL1 UP=0%%|DOWN=0%%");
-        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
-
-        OLED_SetCursor(0, 24);
         snprintf(line_buffer, sizeof(line_buffer), "CYL2 UP=%d%%|DOWN=%d%%", c2_up, c2_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 32);
+        OLED_SetCursor(0, 24);
         snprintf(line_buffer, sizeof(line_buffer), "CYL3 UP=%d%%|DOWN=%d%%", c3_up, c3_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 40);
+        OLED_SetCursor(0, 32);
         snprintf(line_buffer, sizeof(line_buffer), "CYL4 UP=%d%%|DOWN=%d%%", c4_up, c4_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 48);
+        OLED_SetCursor(0, 40);
         snprintf(line_buffer, sizeof(line_buffer), "SLEW CCW=%d%%|CW=%d%%", slew_ccw, slew_cw);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
@@ -641,11 +637,11 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 32);
-        snprintf(line_buffer, sizeof(line_buffer), "OUT L UP=%d%%|DOWN=%d%%", ol_up, ol_dn);
+        snprintf(line_buffer, sizeof(line_buffer), "OUT L UP=%d%% DOWN=%d%%", ol_up, ol_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 40);
-        snprintf(line_buffer, sizeof(line_buffer), "OUT R UP=%d%%|DOWN=%d%%", or_up, or_dn);
+        snprintf(line_buffer, sizeof(line_buffer), "OUT R UP=%d%% DOWN=%d%%", or_up, or_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
     else
