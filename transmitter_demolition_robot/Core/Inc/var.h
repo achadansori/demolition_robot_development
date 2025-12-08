@@ -58,7 +58,8 @@ typedef struct {
     uint8_t s4_2            : 1;  // Bit 10
     uint8_t s5_1            : 1;  // Bit 11
     uint8_t s5_2            : 1;  // Bit 12
-    uint8_t reserved        : 3;  // Bit 13-15 (reserved untuk ekspansi)
+    uint8_t motor_active    : 1;  // Bit 13 - Motor starter trigger (PE6 PWM control)
+    uint8_t reserved        : 2;  // Bit 14-15 (reserved untuk ekspansi)
 } __attribute__((packed)) Switch_Data_t;
 
 /**

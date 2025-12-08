@@ -38,6 +38,7 @@ typedef struct {
     uint8_t s5_2;
     uint16_t r1;
     uint16_t r8;
+    uint8_t motor_active;  // Motor starter trigger (from S1_1 hold logic)
 } LoRa_ReceivedData_t;
 
 typedef enum {
