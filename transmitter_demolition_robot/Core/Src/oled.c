@@ -477,9 +477,14 @@ void OLED_ShowSplashScreen(void)
   * @param  s5_1: Switch 5_1 state
   * @param  s5_2: Switch 5_2 state
   * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y, r8, r1]
+  * @param  sleep_mode: SLEEP mode active flag
+  * @param  safety_ok: Safety checks passed flag
+  * @param  motor_starting_phase: Motor starting phase (after S2_1 hold, before motor start)
+  * @param  s2_hold_progress: S2_1 hold progress counter
+  * @param  s1_hold_progress: S1_1 hold progress counter (motor starting)
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t motor_starting_phase, uint8_t s2_hold_progress, uint8_t s1_hold_progress)
 {
     OLED_Clear();
 
@@ -506,21 +511,49 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         OLED_SetCursor(18, 24);
         OLED_WriteString("** SLEEP MODE **", FONT_SIZE_NORMAL);
 
-        if (safety_ok)
+        if (motor_starting_phase)
         {
-            // Safety checks PASSED - show hold progress
-            if (hold_progress > 0)
+            // Motor starting phase - show S1_1 hold progress for motor start
+            if (s1_hold_progress > 0)
+            {
+                // S1_1 is being held - show motor starting progress
+                char progress_text[24];
+                uint8_t percent = (s1_hold_progress * 100) / 20;  // 20 = S1_1_HOLD_REQUIRED
+                snprintf(progress_text, sizeof(progress_text), "Motor Start: %d%%", percent);
+
+                OLED_SetCursor(20, 32);
+                OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
+
+                // Draw progress bar
+                uint8_t bar_width = (s1_hold_progress * 100) / 20;  // 0-100 pixels
+                OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
+                OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
+            }
+            else
+            {
+                // Ready to start motor - hold S1_1
+                OLED_SetCursor(18, 36);
+                OLED_WriteString("Safety Passed", FONT_SIZE_NORMAL);
+
+                OLED_SetCursor(10, 48);
+                OLED_WriteString("Hold S1 DOWN", FONT_SIZE_NORMAL);
+            }
+        }
+        else if (safety_ok)
+        {
+            // Safety checks PASSED - show S2_1 hold progress
+            if (s2_hold_progress > 0)
             {
                 // S2_1 is being held - show progress
                 char progress_text[20];
-                uint8_t percent = (hold_progress * 100) / 20;  // 20 = S2_1_HOLD_REQUIRED
+                uint8_t percent = (s2_hold_progress * 100) / 10;  // 10 = S2_1_HOLD_REQUIRED (1 sec)
                 snprintf(progress_text, sizeof(progress_text), "Holding: %d%%", percent);
 
                 OLED_SetCursor(28, 32);
                 OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
 
                 // Draw progress bar
-                uint8_t bar_width = (hold_progress * 100) / 20;  // 0-100 pixels
+                uint8_t bar_width = (s2_hold_progress * 100) / 10;  // 0-100 pixels
                 OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
                 OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
             }
