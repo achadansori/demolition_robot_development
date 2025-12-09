@@ -13,6 +13,8 @@
 /* Private defines -----------------------------------------------------------*/
 #define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
 #define JOYSTICK_DEADZONE   10      // Deadzone around center to prevent drift
+#define PWM_MIN             40      // Minimum PWM output (40%)
+#define PWM_MAX             80      // Maximum PWM output (80%)
 
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse);
@@ -344,10 +346,10 @@ void Control_EmergencyStop(void)
 }
 
 /**
-  * @brief  Map joystick value (0-255) to PWM duty cycle (0-100%)
+  * @brief  Map joystick value (0-255) to PWM duty cycle with limiting
   * @param  joystick_value: Raw joystick value (0-255)
   * @param  inverse: true = map 0-127 to 0-100%, false = map 127-255 to 0-100%
-  * @retval PWM duty cycle percentage (0-100)
+  * @retval PWM duty cycle percentage (40-80% when active, 0% when stopped)
   */
 static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse)
 {
@@ -372,6 +374,14 @@ static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse)
 
     // Clamp to 0-100%
     if (pwm_value > 100) pwm_value = 100;
+
+    // Apply PWM limiting: 0% stays 0%, 1-100% maps to 40-80%
+    if (pwm_value > 0)
+    {
+        // Scale from 0-100% to PWM_MIN-PWM_MAX (40-80%)
+        // Formula: output = min + (input * (max - min) / 100)
+        pwm_value = PWM_MIN + ((pwm_value * (PWM_MAX - PWM_MIN)) / 100);
+    }
 
     return pwm_value;
 }
