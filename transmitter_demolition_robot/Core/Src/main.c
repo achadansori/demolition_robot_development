@@ -243,9 +243,8 @@ int main(void)
         tx_data.switches.s5_1 = 0;
         tx_data.switches.s5_2 = 0;
 
-        // Turn off OLED to save battery when emergency button pressed
-        OLED_Clear();
-        OLED_Update();
+        // Show splash screen when emergency button pressed (reset display)
+        OLED_ShowSplashScreen();
     }
     else if (sleep_mode_active)
     {
