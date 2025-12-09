@@ -113,8 +113,8 @@ int main(void)
   uint8_t s1_1_hold_counter = 0;
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
-  #define S2_1_HOLD_REQUIRED 10      // 20 cycles x 100ms = 2 seconds hold required
-  #define S1_1_HOLD_REQUIRED 10      // 20 cycles x 100ms = 2 seconds hold required
+  #define S2_1_HOLD_REQUIRED 10      // 10 cycles x 100ms = 1 second hold required
+  #define S1_1_HOLD_REQUIRED 10      // 10 cycles x 100ms = 1 second hold required
 
   // Motor starter variables
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
@@ -242,6 +242,10 @@ int main(void)
         tx_data.switches.s4_2 = 0;
         tx_data.switches.s5_1 = 0;
         tx_data.switches.s5_2 = 0;
+
+        // Turn off OLED to save battery when emergency button pressed
+        OLED_Clear();
+        OLED_Update();
     }
     else if (sleep_mode_active)
     {
