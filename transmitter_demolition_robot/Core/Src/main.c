@@ -111,6 +111,7 @@ int main(void)
   uint8_t last_s2_1_state = 0;
   uint8_t s2_1_hold_counter = 0;
   uint8_t s1_1_hold_counter = 0;
+  uint8_t last_s0_state = 1;  // Track S0 state to detect S0 transitions (0→1)
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
   #define S2_1_HOLD_REQUIRED 10      // 10 cycles x 100ms = 1 second hold required
@@ -243,10 +244,25 @@ int main(void)
         tx_data.switches.s5_1 = 0;
         tx_data.switches.s5_2 = 0;
 
-        // Show splash screen when emergency button pressed (reset display)
-        OLED_ShowSplashScreen();
+        // Turn off OLED when S0=0 (emergency mode - save battery)
+        OLED_Clear();
+        OLED_Update();
+
+        last_s0_state = 0;  // Remember S0 was pressed
     }
-    else if (sleep_mode_active)
+    else
+    {
+        // S0 = 1 (not emergency)
+        // Check if S0 just changed from 0→1 (system restart)
+        if (last_s0_state == 0)
+        {
+            // S0 transitioned from 0→1 - System starts! Show splash screen
+            OLED_ShowSplashScreen();
+            last_s0_state = 1;
+        }
+    }
+
+    if (sleep_mode_active && tx_data.switches.s0 == 1)
     {
         // ====================================================================
         // S0 = 1, but still in SLEEP mode - Check Safety Interlock to Exit
