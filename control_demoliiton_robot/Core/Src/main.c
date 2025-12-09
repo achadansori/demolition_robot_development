@@ -104,6 +104,19 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
+  // ========================================================================
+  // SAFETY FEATURE: Communication Timeout Watchdog
+  // ========================================================================
+  // If no data received from transmitter for COMM_TIMEOUT_MS,
+  // smoothly transition all PWM outputs to 0 to prevent runaway robot!
+  #define COMM_TIMEOUT_MS         500     // 500ms timeout (10 missed packets @ 50ms rate)
+  #define SAFETY_TRANSITION_STEPS 20      // 20 steps for smooth transition to 0
+
+  uint32_t last_data_received_time = 0;   // Timestamp of last valid LoRa packet
+  uint8_t safety_mode_active = 0;         // 1 = timeout detected, transitioning to safe state
+  uint8_t safety_transition_step = 0;     // Current step in smooth transition (0-20)
+  uint8_t pwm_backup[PWM_CHANNEL_COUNT];  // Backup of PWM values before safety transition
+
   // Initialize M0 and M1 pins for LoRa configuration
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5;  // PE4=M0, PE5=M1
@@ -176,6 +189,9 @@ int main(void)
   CDC_Transmit_FS((uint8_t*)control_msg, strlen(control_msg));
   HAL_Delay(50);
 
+  // Initialize safety timeout - give transmitter time to start (1 second grace period)
+  last_data_received_time = HAL_GetTick();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -186,13 +202,34 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
+    // ========================================================================
+    // COMMUNICATION TIMEOUT SAFETY WATCHDOG
+    // ========================================================================
+    uint32_t current_time = HAL_GetTick();
+    uint32_t time_since_last_data = current_time - last_data_received_time;
+
     // Check if new data is available
     if (LoRa_Receiver_IsDataAvailable())
     {
       // Get received data
       if (LoRa_Receiver_GetData(&lora_data))
       {
-        // Update control outputs based on received data
+        // Update timestamp - we received valid data!
+        last_data_received_time = current_time;
+
+        // If recovering from safety mode, restore normal operation
+        if (safety_mode_active)
+        {
+          safety_mode_active = 0;
+          safety_transition_step = 0;
+          // PWM will be restored by Control_Update() below
+
+          // Send recovery message to USB
+          char *recovery_msg = "\r\n*** COMM RESTORED! Resuming normal operation ***\r\n";
+          CDC_Transmit_FS((uint8_t*)recovery_msg, strlen(recovery_msg));
+        }
+
+        // Update control outputs based on received data (normal operation)
         Control_Update(&lora_data);
 
         // Print to USB less frequently to avoid blocking
@@ -230,6 +267,59 @@ int main(void)
           CDC_Transmit_FS((uint8_t*)output_buffer, len);
         }
         // Data is still received every 50ms via LoRa realtime - just not printed every time
+      }
+    }
+
+    // ========================================================================
+    // SAFETY TIMEOUT: Smooth transition to 0 if no data received
+    // ========================================================================
+    else if (time_since_last_data > COMM_TIMEOUT_MS)
+    {
+      // TIMEOUT DETECTED! No data received for more than 500ms
+      // Smoothly transition all PWM outputs to 0 to prevent runaway robot
+
+      if (!safety_mode_active)
+      {
+        // First time entering safety mode - backup current PWM values
+        safety_mode_active = 1;
+        safety_transition_step = 0;
+
+        for (uint8_t i = 0; i < PWM_CHANNEL_COUNT; i++)
+        {
+          pwm_backup[i] = PWM_GetDutyCycle((PWM_Channel_t)i);
+        }
+
+        // Send warning message to USB
+        char *warning_msg = "\r\n*** COMM TIMEOUT! Transitioning PWM to 0... ***\r\n";
+        CDC_Transmit_FS((uint8_t*)warning_msg, strlen(warning_msg));
+      }
+
+      // Smooth transition: Gradually reduce all PWM to 0 over 20 steps
+      // Each step runs every 10ms (in main loop), total transition = 200ms
+      static uint32_t last_transition_step = 0;
+      if (HAL_GetTick() - last_transition_step >= 10)  // 10ms per step
+      {
+        last_transition_step = HAL_GetTick();
+
+        if (safety_transition_step < SAFETY_TRANSITION_STEPS)
+        {
+          safety_transition_step++;
+
+          // Calculate transition factor (1.0 → 0.0)
+          float factor = 1.0f - ((float)safety_transition_step / (float)SAFETY_TRANSITION_STEPS);
+
+          // Apply smooth transition to all PWM channels
+          for (uint8_t i = 0; i < PWM_CHANNEL_COUNT; i++)
+          {
+            uint8_t new_duty = (uint8_t)(pwm_backup[i] * factor);
+            PWM_SetDutyCycle((PWM_Channel_t)i, new_duty);
+          }
+        }
+        else
+        {
+          // Transition complete - force all PWM to exact 0
+          PWM_StopAll();
+        }
       }
     }
 
