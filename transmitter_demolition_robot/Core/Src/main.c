@@ -113,7 +113,7 @@ int main(void)
   uint8_t s2_1_hold_counter = 0;
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
-  #define S2_1_HOLD_REQUIRED 10      // 10 cycles x 100ms = 1 second hold (REDUCED from 2s)
+  #define S2_1_HOLD_REQUIRED 5       // 5 cycles x 100ms = 0.5 second hold (FASTER response!)
 
   // Motor starter variables (S1_1 hold logic)
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
