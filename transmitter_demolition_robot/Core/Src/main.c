@@ -110,14 +110,14 @@ int main(void)
   uint8_t safety_check_passed = 0;
   uint8_t last_s2_1_state = 0;
   uint8_t s2_1_hold_counter = 0;
+  uint8_t s1_1_hold_counter = 0;
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
   #define S2_1_HOLD_REQUIRED 20      // 20 cycles x 100ms = 2 seconds hold required
+  #define S1_1_HOLD_REQUIRED 20      // 20 cycles x 100ms = 2 seconds hold required
 
-  // Motor starter variables (S1_1 hold logic)
+  // Motor starter variables
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
-  uint8_t s1_1_hold_counter = 0;   // Counter for S1_1 hold duration
-  #define S1_1_HOLD_REQUIRED 20    // 20 cycles x 100ms = 2 seconds hold required
 
   // Safety tolerances for exiting SLEEP mode
   #define JOYSTICK_CENTER 127
@@ -197,6 +197,7 @@ int main(void)
             sleep_transition_steps = 0;
             safety_check_passed = 0;
             s2_1_hold_counter = 0;
+            s1_1_hold_counter = 0;
         }
 
         // Fast smooth transition to default values (10 steps = 100ms)
@@ -293,7 +294,7 @@ int main(void)
             switches_safe = 1;
         }
 
-        // Step 2: If all safety checks pass, wait for S2_1 HOLD to exit
+        // Step 2: If all safety checks pass, wait for S2_1 HOLD to exit SLEEP mode
         if (joystick_safe && resistor_safe && switches_safe)
         {
             safety_check_passed = 1;
@@ -307,11 +308,10 @@ int main(void)
                 // Check if held long enough
                 if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
                 {
-                    // S2_1 held for 2 seconds - EXIT SLEEP MODE
+                    // S2_1 held for 2 seconds - EXIT SLEEP MODE!
                     sleep_mode_active = 0;
                     sleep_transition_steps = 0;
-                    safety_check_passed = 0;
-                    s2_1_hold_counter = 0;
+                    s2_1_hold_counter = 0;  // Reset counter
                 }
             }
             else
@@ -363,12 +363,13 @@ int main(void)
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL - S1_1 hold logic (works even in SLEEP mode)
+    // MOTOR STARTER CONTROL - S1_1 HOLD (2 seconds)
     // ========================================================================
-    // Motor can only be started when S1_1 is held for 2 seconds
-    // Motor stops immediately when S1_1 is released (safety feature)
-    if (!sleep_mode_active)  // Only allow motor control when not in SLEEP
+    // Flow: SLEEP → Safety OK → Hold S2_1 (2s) → Exit SLEEP → Hold S1_1 (2s) → Motor ON
+
+    if (!sleep_mode_active)
     {
+        // Not in SLEEP mode - motor control allowed
         if (tx_data.switches.s1_1 == 1)
         {
             // S1_1 is pressed - increment hold counter
@@ -377,15 +378,15 @@ int main(void)
             // Check if held long enough
             if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
             {
-                // S1_1 held for 2 seconds - ACTIVATE MOTOR
+                // S1_1 held for 2 seconds - ACTIVATE MOTOR!
                 motor_active = 1;
             }
         }
         else
         {
             // S1_1 released - IMMEDIATELY stop motor (safety!)
-            s1_1_hold_counter = 0;
             motor_active = 0;
+            s1_1_hold_counter = 0;  // Reset counter
         }
     }
     else
@@ -420,16 +421,18 @@ int main(void)
     static uint8_t last_safety_state = 0;
     static uint8_t last_hold_counter = 0;
 
+    uint8_t current_hold_progress = sleep_mode_active ? s2_1_hold_counter : s1_1_hold_counter;
+
     if (sleep_mode_active != last_sleep_state ||
         safety_check_passed != last_safety_state ||
-        s2_1_hold_counter != last_hold_counter ||
+        current_hold_progress != last_hold_counter ||
         ++oled_counter >= 10)
     {
         oled_counter = 0;
         last_sleep_state = sleep_mode_active;
         last_safety_state = safety_check_passed;
-        last_hold_counter = s2_1_hold_counter;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, s2_1_hold_counter);
+        last_hold_counter = current_hold_progress;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress);
         OLED_Update();
     }
 

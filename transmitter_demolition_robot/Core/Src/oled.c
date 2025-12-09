@@ -637,12 +637,12 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 
         if (safety_ok)
         {
-            // Safety checks PASSED - show hold progress
+            // Safety checks PASSED - show S2_1 hold progress
             if (hold_progress > 0)
             {
                 // S2_1 is being held - show progress
                 char progress_text[20];
-                uint8_t percent = (hold_progress * 100) / 20;  // 20 = S2_1_HOLD_REQUIRED
+                uint8_t percent = (hold_progress * 100) / 20;  // 20 = S2_1_HOLD_REQUIRED (2 sec)
                 snprintf(progress_text, sizeof(progress_text), "Holding: %d%%", percent);
 
                 OLED_SetCursor(28, 32);
