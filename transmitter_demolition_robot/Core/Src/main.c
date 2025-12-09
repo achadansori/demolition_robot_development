@@ -109,6 +109,7 @@ int main(void)
   uint8_t sleep_transition_steps = 0;
   uint8_t safety_check_passed = 0;
   uint8_t motor_starting_phase = 0;  // Phase between S2_1 complete and motor started
+  uint8_t s2_released_after_hold = 0;  // Flag: S2_1 must be released after hold before motor start
   uint8_t last_s2_1_state = 0;
   uint8_t s2_1_hold_counter = 0;
 
@@ -197,6 +198,8 @@ int main(void)
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
             safety_check_passed = 0;
+            motor_starting_phase = 0;
+            s2_released_after_hold = 0;
             s2_1_hold_counter = 0;
         }
 
@@ -312,11 +315,12 @@ int main(void)
                     // Check if held long enough
                     if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
                     {
-                        // S2_1 held for 1 second - ENTER MOTOR STARTING PHASE
+                        // S2_1 held for 0.5 second - ENTER MOTOR STARTING PHASE
                         // NOT exiting SLEEP yet! Must start motor first for safety
                         motor_starting_phase = 1;
-                        safety_check_passed = 0;  // Reset safety flag
-                        s2_1_hold_counter = 0;    // Reset S2_1 counter
+                        s2_released_after_hold = 0;  // User MUST release S2_1 before motor start!
+                        safety_check_passed = 0;     // Reset safety flag
+                        s2_1_hold_counter = 0;       // Reset S2_1 counter
                     }
                 }
                 else
@@ -357,7 +361,21 @@ int main(void)
                 tx_data.switches.s5_2 = 0;
             }
         }
-        // If motor_starting_phase = 1, skip safety check above and proceed to motor control
+        else
+        {
+            // ================================================================
+            // motor_starting_phase = 1: Waiting for S2_1 release before motor start
+            // ================================================================
+            // User must RELEASE S2_1 before being allowed to start motor with S1_1
+            // This prevents the loop bug where counter goes back to 0 while S2_1 still pressed
+
+            if (tx_data.switches.s2_1 == 0)
+            {
+                // S2_1 is RELEASED - allow motor start!
+                s2_released_after_hold = 1;
+            }
+            // If S2_1 still pressed, s2_released_after_hold stays 0, motor start blocked
+        }
     }
     else
     {
@@ -373,9 +391,24 @@ int main(void)
     // MOTOR STARTER CONTROL - S1_1 hold logic
     // ========================================================================
     // NEW LOGIC: Motor must be started BEFORE exiting SLEEP mode for safety!
-    // Flow: SLEEP → Safety OK → Hold S2_1 → Motor Starting Phase → Hold S1_1 → Motor ON → Exit SLEEP
+    // Flow: SLEEP → Safety OK → Hold S2_1 → Release S2_1 → Motor Starting Phase → Hold S1_1 → Motor ON → Exit SLEEP
 
-    if (motor_starting_phase || !sleep_mode_active)  // Allow motor control in motor_starting_phase OR normal mode
+    // Allow motor control if:
+    // 1. In motor_starting_phase AND S2_1 has been released, OR
+    // 2. Not in SLEEP mode (normal operation)
+    uint8_t motor_control_allowed = 0;
+    if (motor_starting_phase)
+    {
+        // In motor starting phase - only allow if S2_1 was released
+        motor_control_allowed = s2_released_after_hold;
+    }
+    else if (!sleep_mode_active)
+    {
+        // Normal operation - always allow
+        motor_control_allowed = 1;
+    }
+
+    if (motor_control_allowed)
     {
         if (tx_data.switches.s1_1 == 1)
         {
@@ -391,8 +424,9 @@ int main(void)
                 // If we were in motor_starting_phase (still in SLEEP), now exit SLEEP!
                 if (motor_starting_phase && sleep_mode_active)
                 {
-                    sleep_mode_active = 0;  // Exit SLEEP mode - motor is running!
-                    motor_starting_phase = 0;
+                    sleep_mode_active = 0;       // Exit SLEEP mode - motor is running!
+                    motor_starting_phase = 0;    // Reset phase
+                    s2_released_after_hold = 0;  // Reset release flag
                     sleep_transition_steps = 0;
                 }
             }
@@ -457,7 +491,7 @@ int main(void)
         last_motor_phase = motor_starting_phase;
         last_s2_hold_counter = s2_1_hold_counter;
         last_s1_hold_counter = s1_1_hold_counter;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, motor_starting_phase, s2_1_hold_counter, s1_1_hold_counter);
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, motor_starting_phase, s2_released_after_hold, s2_1_hold_counter, s1_1_hold_counter);
         OLED_Update();
     }
 
