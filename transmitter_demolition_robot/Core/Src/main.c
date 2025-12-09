@@ -108,16 +108,16 @@ int main(void)
   uint8_t sleep_mode_active = 1;  // Start in SLEEP mode for safety!
   uint8_t sleep_transition_steps = 0;
   uint8_t safety_check_passed = 0;
-  uint8_t motor_starting_phase = 0;  // Phase between S2_1 complete and motor started
-  uint8_t s2_released_after_hold = 0;  // Flag: S2_1 must be released after hold before motor start
   uint8_t last_s2_1_state = 0;
   uint8_t s2_1_hold_counter = 0;
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
-  #define S2_1_HOLD_REQUIRED 5       // 5 cycles x 100ms = 0.5 second hold (FAST!)
+  #define S2_1_HOLD_REQUIRED 20      // 20 cycles x 100ms = 2 seconds hold required
 
-  // Motor starter variables (NO HOLD - instant activation!)
+  // Motor starter variables (S1_1 hold logic)
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
+  uint8_t s1_1_hold_counter = 0;   // Counter for S1_1 hold duration
+  #define S1_1_HOLD_REQUIRED 20    // 20 cycles x 100ms = 2 seconds hold required
 
   // Safety tolerances for exiting SLEEP mode
   #define JOYSTICK_CENTER 127
@@ -196,8 +196,6 @@ int main(void)
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
             safety_check_passed = 0;
-            motor_starting_phase = 0;
-            s2_released_after_hold = 0;
             s2_1_hold_counter = 0;
         }
 
@@ -250,129 +248,108 @@ int main(void)
         // S0 = 1, but still in SLEEP mode - Check Safety Interlock to Exit
         // ====================================================================
 
-        // If already in motor_starting_phase, SKIP safety check!
-        // User is now allowed to press S1_1 to start motor
-        if (!motor_starting_phase)
+        // Step 1: Check if all controls are in SAFE position
+        uint8_t joystick_safe = 0;
+        uint8_t resistor_safe = 0;
+        uint8_t switches_safe = 0;
+
+        // Check joysticks are centered (127 ± 5)
+        if ((tx_data.joystick.left_x  >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.left_x  <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.left_y  >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.left_y  <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_x >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_x <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_y >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
+            (tx_data.joystick.right_y <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE))
         {
-            // Step 1: Check if all controls are in SAFE position
-            uint8_t joystick_safe = 0;
-            uint8_t resistor_safe = 0;
-            uint8_t switches_safe = 0;
+            joystick_safe = 1;
+        }
 
-            // Check joysticks are centered (127 ± 5)
-            if ((tx_data.joystick.left_x  >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
-                (tx_data.joystick.left_x  <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
-                (tx_data.joystick.left_y  >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
-                (tx_data.joystick.left_y  <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
-                (tx_data.joystick.right_x >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
-                (tx_data.joystick.right_x <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE) &&
-                (tx_data.joystick.right_y >= JOYSTICK_CENTER - JOYSTICK_TOLERANCE) &&
-                (tx_data.joystick.right_y <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE))
+        // Check R1 and R8 are at 0 (0 ± 10)
+        if ((tx_data.joystick.r1 <= RESISTOR_TOLERANCE) &&
+            (tx_data.joystick.r8 <= RESISTOR_TOLERANCE))
+        {
+            resistor_safe = 1;
+        }
+
+        // Check all switches are 0 (except S0 and S2_1 which are excluded)
+        // S0 is emergency button (already checked above)
+        // S2_1 is excluded so user can press S2_1 to exit SLEEP mode
+        // S2_2 must still be OFF for safety
+        if ((tx_data.switches.joy_left_btn1  == 0) &&
+            (tx_data.switches.joy_left_btn2  == 0) &&
+            (tx_data.switches.joy_right_btn1 == 0) &&
+            (tx_data.switches.joy_right_btn2 == 0) &&
+            (tx_data.switches.s1_1 == 0) &&
+            (tx_data.switches.s1_2 == 0) &&
+            // S2_1 NOT checked - used to exit SLEEP mode
+            (tx_data.switches.s2_2 == 0) &&  // S2_2 must be OFF
+            (tx_data.switches.s4_1 == 0) &&
+            (tx_data.switches.s4_2 == 0) &&
+            (tx_data.switches.s5_1 == 0) &&
+            (tx_data.switches.s5_2 == 0))
+        {
+            switches_safe = 1;
+        }
+
+        // Step 2: If all safety checks pass, wait for S2_1 HOLD to exit
+        if (joystick_safe && resistor_safe && switches_safe)
+        {
+            safety_check_passed = 1;
+
+            // S2_1 must be held for S2_1_HOLD_REQUIRED cycles (2 seconds)
+            if (tx_data.switches.s2_1 == 1)
             {
-                joystick_safe = 1;
-            }
+                // S2_1 is pressed - increment hold counter
+                s2_1_hold_counter++;
 
-            // Check R1 and R8 are at 0 (0 ± 10)
-            if ((tx_data.joystick.r1 <= RESISTOR_TOLERANCE) &&
-                (tx_data.joystick.r8 <= RESISTOR_TOLERANCE))
-            {
-                resistor_safe = 1;
-            }
-
-            // Check all switches are 0 (except S0 and S2_1 which are excluded)
-            // S0 is emergency button (already checked above)
-            // S2_1 is excluded so user can press S2_1 to exit SLEEP mode
-            // S2_2 must still be OFF for safety
-            if ((tx_data.switches.joy_left_btn1  == 0) &&
-                (tx_data.switches.joy_left_btn2  == 0) &&
-                (tx_data.switches.joy_right_btn1 == 0) &&
-                (tx_data.switches.joy_right_btn2 == 0) &&
-                (tx_data.switches.s1_1 == 0) &&
-                (tx_data.switches.s1_2 == 0) &&
-                // S2_1 NOT checked - used to exit SLEEP mode
-                (tx_data.switches.s2_2 == 0) &&  // S2_2 must be OFF
-                (tx_data.switches.s4_1 == 0) &&
-                (tx_data.switches.s4_2 == 0) &&
-                (tx_data.switches.s5_1 == 0) &&
-                (tx_data.switches.s5_2 == 0))
-            {
-                switches_safe = 1;
-            }
-
-            // Step 2: If all safety checks pass, wait for S2_1 HOLD to enter motor starting phase
-            if (joystick_safe && resistor_safe && switches_safe)
-            {
-                safety_check_passed = 1;
-
-                // S2_1 must be held for S2_1_HOLD_REQUIRED cycles (1 second)
-                if (tx_data.switches.s2_1 == 1)
+                // Check if held long enough
+                if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
                 {
-                    // S2_1 is pressed - increment hold counter
-                    s2_1_hold_counter++;
-
-                    // Check if held long enough
-                    if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
-                    {
-                        // S2_1 held for 0.5 second - ENTER MOTOR STARTING PHASE
-                        // NOT exiting SLEEP yet! Must start motor first for safety
-                        motor_starting_phase = 1;
-                        s2_released_after_hold = 0;  // User MUST release S2_1 before motor start!
-                        safety_check_passed = 0;     // Reset safety flag
-                        s2_1_hold_counter = 0;       // Reset S2_1 counter
-                    }
-                }
-                else
-                {
-                    // S2_1 released before hold time completed - reset counter
+                    // S2_1 held for 2 seconds - EXIT SLEEP MODE
+                    sleep_mode_active = 0;
+                    sleep_transition_steps = 0;
+                    safety_check_passed = 0;
                     s2_1_hold_counter = 0;
                 }
-
-                last_s2_1_state = tx_data.switches.s2_1;
             }
             else
             {
-                // Safety check failed - reset state (but NOT motor_starting_phase!)
-                safety_check_passed = 0;
-                last_s2_1_state = 0;
+                // S2_1 released before hold time completed - reset counter
                 s2_1_hold_counter = 0;
-
-                // Override transmitted data to safe values during SLEEP
-                tx_data.joystick.left_x  = 127;
-                tx_data.joystick.left_y  = 127;
-                tx_data.joystick.right_x = 127;
-                tx_data.joystick.right_y = 127;
-                tx_data.joystick.r1 = 0;
-                tx_data.joystick.r8 = 0;
-
-                // All switches to 0
-                tx_data.switches.joy_left_btn1  = 0;
-                tx_data.switches.joy_left_btn2  = 0;
-                tx_data.switches.joy_right_btn1 = 0;
-                tx_data.switches.joy_right_btn2 = 0;
-                tx_data.switches.s1_1 = 0;
-                tx_data.switches.s1_2 = 0;
-                tx_data.switches.s2_1 = 0;
-                tx_data.switches.s2_2 = 0;
-                tx_data.switches.s4_1 = 0;
-                tx_data.switches.s4_2 = 0;
-                tx_data.switches.s5_1 = 0;
-                tx_data.switches.s5_2 = 0;
             }
+
+            last_s2_1_state = tx_data.switches.s2_1;
         }
         else
         {
-            // ================================================================
-            // motor_starting_phase = 1: Waiting for S2_1 release before motor start
-            // ================================================================
-            // User must RELEASE S2_1 before being allowed to start motor with S1_1
-            // This prevents the loop bug where counter goes back to 0 while S2_1 still pressed
+            // Safety check failed - reset state
+            safety_check_passed = 0;
+            last_s2_1_state = 0;
+            s2_1_hold_counter = 0;
 
-            if (tx_data.switches.s2_1 == 0)
-            {
-                // S2_1 is RELEASED - allow motor start!
-                s2_released_after_hold = 1;
-            }
-            // If S2_1 still pressed, s2_released_after_hold stays 0, motor start blocked
+            // Override transmitted data to safe values during SLEEP
+            tx_data.joystick.left_x  = 127;
+            tx_data.joystick.left_y  = 127;
+            tx_data.joystick.right_x = 127;
+            tx_data.joystick.right_y = 127;
+            tx_data.joystick.r1 = 0;
+            tx_data.joystick.r8 = 0;
+
+            // All switches to 0
+            tx_data.switches.joy_left_btn1  = 0;
+            tx_data.switches.joy_left_btn2  = 0;
+            tx_data.switches.joy_right_btn1 = 0;
+            tx_data.switches.joy_right_btn2 = 0;
+            tx_data.switches.s1_1 = 0;
+            tx_data.switches.s1_2 = 0;
+            tx_data.switches.s2_1 = 0;
+            tx_data.switches.s2_2 = 0;
+            tx_data.switches.s4_1 = 0;
+            tx_data.switches.s4_2 = 0;
+            tx_data.switches.s5_1 = 0;
+            tx_data.switches.s5_2 = 0;
         }
     }
     else
@@ -386,59 +363,36 @@ int main(void)
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL - S1_1 instant activation (NO HOLD!)
+    // MOTOR STARTER CONTROL - S1_1 hold logic (works even in SLEEP mode)
     // ========================================================================
-    // SIMPLIFIED LOGIC: Motor starts INSTANTLY when S1_1 pressed
-    // Flow: SLEEP → Safety OK → Hold S2_1 (0.5s) → Release S2_1 → Press S1_1 → Motor ON → Exit SLEEP
-
-    // Allow motor control if:
-    // 1. In motor_starting_phase AND S2_1 has been released, OR
-    // 2. Not in SLEEP mode (normal operation)
-    uint8_t motor_control_allowed = 0;
-    if (motor_starting_phase)
-    {
-        // In motor starting phase - only allow if S2_1 was released
-        motor_control_allowed = s2_released_after_hold;
-    }
-    else if (!sleep_mode_active)
-    {
-        // Normal operation - always allow
-        motor_control_allowed = 1;
-    }
-
-    if (motor_control_allowed)
+    // Motor can only be started when S1_1 is held for 2 seconds
+    // Motor stops immediately when S1_1 is released (safety feature)
+    if (!sleep_mode_active)  // Only allow motor control when not in SLEEP
     {
         if (tx_data.switches.s1_1 == 1)
         {
-            // S1_1 is pressed - INSTANTLY ACTIVATE MOTOR (no hold required!)
-            motor_active = 1;
+            // S1_1 is pressed - increment hold counter
+            s1_1_hold_counter++;
 
-            // If we were in motor_starting_phase (still in SLEEP), now exit SLEEP!
-            if (motor_starting_phase && sleep_mode_active)
+            // Check if held long enough
+            if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
             {
-                sleep_mode_active = 0;       // Exit SLEEP mode - motor is running!
-                motor_starting_phase = 0;    // Reset phase
-                s2_released_after_hold = 0;  // Reset release flag
-                sleep_transition_steps = 0;
+                // S1_1 held for 2 seconds - ACTIVATE MOTOR
+                motor_active = 1;
             }
         }
         else
         {
             // S1_1 released - IMMEDIATELY stop motor (safety!)
+            s1_1_hold_counter = 0;
             motor_active = 0;
-
-            // If motor stopped during motor_starting_phase, go back to safety check
-            if (motor_starting_phase)
-            {
-                motor_starting_phase = 0;  // Reset phase, must restart procedure
-                s2_released_after_hold = 0;  // Reset release flag
-            }
         }
     }
     else
     {
-        // In SLEEP mode but not yet in motor_starting_phase - force motor OFF
+        // In SLEEP mode - force motor OFF
         motor_active = 0;
+        s1_1_hold_counter = 0;
     }
 
     // Update motor state in tx_data before transmission
@@ -464,21 +418,18 @@ int main(void)
     static uint8_t oled_counter = 0;
     static uint8_t last_sleep_state = 0;
     static uint8_t last_safety_state = 0;
-    static uint8_t last_s2_hold_counter = 0;
-    static uint8_t last_motor_phase = 0;
+    static uint8_t last_hold_counter = 0;
 
     if (sleep_mode_active != last_sleep_state ||
         safety_check_passed != last_safety_state ||
-        motor_starting_phase != last_motor_phase ||
-        s2_1_hold_counter != last_s2_hold_counter ||
+        s2_1_hold_counter != last_hold_counter ||
         ++oled_counter >= 10)
     {
         oled_counter = 0;
         last_sleep_state = sleep_mode_active;
         last_safety_state = safety_check_passed;
-        last_motor_phase = motor_starting_phase;
-        last_s2_hold_counter = s2_1_hold_counter;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, motor_starting_phase, s2_released_after_hold, s2_1_hold_counter, 0);  // s1_hold = 0 (no hold anymore!)
+        last_hold_counter = s2_1_hold_counter;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, s2_1_hold_counter);
         OLED_Update();
     }
 

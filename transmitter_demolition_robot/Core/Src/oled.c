@@ -54,6 +54,7 @@ static uint8_t cursor_x = 0;
 static uint8_t cursor_y = 0;
 
 /* Logo bitmap - Aldzama Demolition Robot 128x64px */
+/* Logo bitmap - Aldzama Demolition Robot 128x64px */
 static const uint8_t logo_aldzama[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -605,15 +606,9 @@ void OLED_ShowSplashScreen(void)
   * @param  s5_1: Switch 5_1 state
   * @param  s5_2: Switch 5_2 state
   * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y, r8, r1]
-  * @param  sleep_mode: SLEEP mode active flag
-  * @param  safety_ok: Safety checks passed flag
-  * @param  motor_starting_phase: Motor starting phase (after S2_1 hold, before motor start)
-  * @param  s2_released: Flag indicating S2_1 has been released after hold
-  * @param  s2_hold_progress: S2_1 hold progress counter
-  * @param  s1_hold_progress: S1_1 hold progress counter (motor starting)
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t motor_starting_phase, uint8_t s2_released, uint8_t s2_hold_progress, uint8_t s1_hold_progress)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress)
 {
     OLED_Clear();
 
@@ -640,44 +635,21 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         OLED_SetCursor(18, 24);
         OLED_WriteString("** SLEEP MODE **", FONT_SIZE_NORMAL);
 
-        if (motor_starting_phase)
+        if (safety_ok)
         {
-            // Motor starting phase - NO HOLD, just press S1_1 to start!
-            // Check if S2_1 has been released
-            if (!s2_released)
-            {
-                // S2_1 NOT released yet - must release first!
-                OLED_SetCursor(18, 36);
-                OLED_WriteString("Hold Complete!", FONT_SIZE_NORMAL);
-
-                OLED_SetCursor(8, 48);
-                OLED_WriteString("Release S2 UP", FONT_SIZE_NORMAL);
-            }
-            else
-            {
-                // S2_1 released - ready to start motor with S1_1 (INSTANT!)
-                OLED_SetCursor(18, 36);
-                OLED_WriteString("Safety Passed", FONT_SIZE_NORMAL);
-
-                OLED_SetCursor(10, 48);
-                OLED_WriteString("Press S1 DOWN", FONT_SIZE_NORMAL);  // PRESS not HOLD!
-            }
-        }
-        else if (safety_ok)
-        {
-            // Safety checks PASSED - show S2_1 hold progress
-            if (s2_hold_progress > 0)
+            // Safety checks PASSED - show hold progress
+            if (hold_progress > 0)
             {
                 // S2_1 is being held - show progress
                 char progress_text[20];
-                uint8_t percent = (s2_hold_progress * 100) / 5;  // 5 = S2_1_HOLD_REQUIRED (0.5 sec)
+                uint8_t percent = (hold_progress * 100) / 20;  // 20 = S2_1_HOLD_REQUIRED
                 snprintf(progress_text, sizeof(progress_text), "Holding: %d%%", percent);
 
                 OLED_SetCursor(28, 32);
                 OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
 
                 // Draw progress bar
-                uint8_t bar_width = (s2_hold_progress * 100) / 5;  // 0-100 pixels
+                uint8_t bar_width = (hold_progress * 100) / 20;  // 0-100 pixels
                 OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
                 OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
             }
