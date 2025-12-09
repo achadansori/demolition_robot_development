@@ -184,85 +184,52 @@ int main(void)
     Var_Update();
 
     // ========================================================================
-    // SLEEP MODE - Emergency Safety Feature with Safety Interlock
+    // S0 SYSTEM ON/OFF SWITCH - Master control for entire system
     // ========================================================================
+    // S0 = 0: System OFF (power down, OLED off, no operation)
+    // S0 = 1: System ON (normal operation)
 
     if (tx_data.switches.s0 == 0)
     {
         // ====================================================================
-        // S0 = 0 (Emergency button pressed) - FORCE SLEEP MODE
+        // S0 = 0 - SYSTEM OFF (like power off or interrupt disable)
         // ====================================================================
-        if (!sleep_mode_active)
-        {
-            sleep_mode_active = 1;
-            sleep_transition_steps = 0;
-            safety_check_passed = 0;
-            s2_1_hold_counter = 0;
-            s1_1_hold_counter = 0;
-        }
-
-        // Fast smooth transition to default values (10 steps = 100ms)
-        if (sleep_transition_steps < SLEEP_TRANSITION_SPEED)
-        {
-            // Calculate transition factor (0.0 to 1.0)
-            float factor = (float)(sleep_transition_steps + 1) / (float)SLEEP_TRANSITION_SPEED;
-
-            // Smooth transition for joysticks to center (127)
-            tx_data.joystick.left_x  = tx_data.joystick.left_x  + (int16_t)((127 - tx_data.joystick.left_x) * factor);
-            tx_data.joystick.left_y  = tx_data.joystick.left_y  + (int16_t)((127 - tx_data.joystick.left_y) * factor);
-            tx_data.joystick.right_x = tx_data.joystick.right_x + (int16_t)((127 - tx_data.joystick.right_x) * factor);
-            tx_data.joystick.right_y = tx_data.joystick.right_y + (int16_t)((127 - tx_data.joystick.right_y) * factor);
-
-            // Smooth transition for R1 and R8 to 0
-            tx_data.joystick.r1 = tx_data.joystick.r1 - (uint8_t)(tx_data.joystick.r1 * factor);
-            tx_data.joystick.r8 = tx_data.joystick.r8 - (uint8_t)(tx_data.joystick.r8 * factor);
-
-            sleep_transition_steps++;
-        }
-        else
-        {
-            // Transition complete - force exact default values
-            tx_data.joystick.left_x  = 127;
-            tx_data.joystick.left_y  = 127;
-            tx_data.joystick.right_x = 127;
-            tx_data.joystick.right_y = 127;
-            tx_data.joystick.r1 = 0;
-            tx_data.joystick.r8 = 0;
-        }
-
-        // All switches to 0 (except S0 which is read from hardware)
-        tx_data.switches.joy_left_btn1  = 0;
-        tx_data.switches.joy_left_btn2  = 0;
-        tx_data.switches.joy_right_btn1 = 0;
-        tx_data.switches.joy_right_btn2 = 0;
-        tx_data.switches.s1_1 = 0;
-        tx_data.switches.s1_2 = 0;
-        tx_data.switches.s2_1 = 0;
-        tx_data.switches.s2_2 = 0;
-        tx_data.switches.s4_1 = 0;
-        tx_data.switches.s4_2 = 0;
-        tx_data.switches.s5_1 = 0;
-        tx_data.switches.s5_2 = 0;
-
-        // Turn off OLED when S0=0 (emergency mode - save battery)
+        // Turn off OLED to save battery
         OLED_Clear();
         OLED_Update();
 
-        last_s0_state = 0;  // Remember S0 was pressed
-    }
-    else
-    {
-        // S0 = 1 (not emergency)
-        // Check if S0 just changed from 0→1 (system restart)
-        if (last_s0_state == 0)
-        {
-            // S0 transitioned from 0→1 - System starts! Show splash screen
-            OLED_ShowSplashScreen();
-            last_s0_state = 1;
-        }
+        // Remember S0 was OFF
+        last_s0_state = 0;
+
+        // Skip all system logic - system is OFF
+        HAL_Delay(100);
+        continue;  // Jump back to while(1), skip everything below
     }
 
-    if (sleep_mode_active && tx_data.switches.s0 == 1)
+    // ========================================================================
+    // S0 = 1 - SYSTEM ON
+    // ========================================================================
+    // Check if S0 just transitioned from 0→1 (system startup/restart)
+    if (last_s0_state == 0)
+    {
+        // System just turned ON! Show splash screen (initialization)
+        OLED_ShowSplashScreen();
+        last_s0_state = 1;
+
+        // Reset all system variables (fresh start)
+        sleep_mode_active = 1;
+        sleep_transition_steps = 0;
+        safety_check_passed = 0;
+        s2_1_hold_counter = 0;
+        s1_1_hold_counter = 0;
+        motor_active = 0;
+    }
+
+    // ========================================================================
+    // SLEEP MODE - Safety Feature with Safety Interlock
+    // ========================================================================
+
+    if (sleep_mode_active)
     {
         // ====================================================================
         // S0 = 1, but still in SLEEP mode - Check Safety Interlock to Exit
