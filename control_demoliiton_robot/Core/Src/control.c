@@ -13,8 +13,8 @@
 /* Private defines -----------------------------------------------------------*/
 #define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
 #define JOYSTICK_DEADZONE   10      // Deadzone around center to prevent drift
-#define PWM_MIN             40      // Minimum PWM output (40%)
-#define PWM_MAX             80      // Maximum PWM output (80%)
+#define PWM_MIN             10      // Minimum PWM output (10%)
+#define PWM_MAX             55      // Maximum PWM output (55%)
 
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse);
