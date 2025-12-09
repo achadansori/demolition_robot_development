@@ -11,12 +11,12 @@
 #include <string.h>
 
 /* Private defines -----------------------------------------------------------*/
-// PWM Frequency: 1000 Hz (1ms period) - OPTIMAL for proportional solenoid valves
+// PWM Frequency: 200 Hz (5ms period) - EASY to measure on oscilloscope at 5ms/div
 // Timer clock = 168 MHz (TIM1, TIM8) or 84 MHz (TIM2, TIM3, TIM4)
-#define PWM_FREQUENCY       1000    // 1kHz - sweet spot for hydraulic proportional valves
+#define PWM_FREQUENCY       200     // 200Hz - 5ms period (perfect for oscilloscope measurement!)
 #define PWM_PRESCALER_APB2  167     // For TIM1, TIM8: 168MHz / (167+1) = 1MHz
 #define PWM_PRESCALER_APB1  83      // For TIM2, TIM3, TIM4: 84MHz / (83+1) = 1MHz
-#define PWM_PERIOD          999     // 1MHz / (999+1) = 1000 Hz
+#define PWM_PERIOD          4999    // 1MHz / (4999+1) = 200 Hz (5ms period)
 
 /* Private variables ---------------------------------------------------------*/
 static uint8_t pwm_duty[PWM_CHANNEL_COUNT] = {0};
@@ -118,7 +118,7 @@ static void PWM_TIM1_Init(void)
 
     // Configure timer
     TIM1->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
-    TIM1->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+    TIM1->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM1->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -159,7 +159,7 @@ static void PWM_TIM2_Init(void)
 
     // Configure timer
     TIM2->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
-    TIM2->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+    TIM2->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM2->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -197,7 +197,7 @@ static void PWM_TIM3_Init(void)
 
     // Configure timer
     TIM3->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
-    TIM3->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+    TIM3->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM3->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -235,7 +235,7 @@ static void PWM_TIM4_Init(void)
 
     // Configure timer
     TIM4->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
-    TIM4->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+    TIM4->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM4->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -273,7 +273,7 @@ static void PWM_TIM8_Init(void)
 
     // Configure timer
     TIM8->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
-    TIM8->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+    TIM8->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
 
     // Configure channels 1, 2, 3, 4 as PWM mode 1
     TIM8->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -314,7 +314,7 @@ static void PWM_TIM9_Init(void)
 
     // Configure timer
     TIM9->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
-    TIM9->ARR = PWM_PERIOD;          // 1MHz / 1000 = 1kHz
+    TIM9->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
 
     // Configure channel 2 as PWM mode 1 (PE6 = TIM9_CH2)
     TIM9->CCMR1 &= ~TIM_CCMR1_OC2M;
