@@ -160,6 +160,28 @@ int main(void)
   USB_Print("========================================\r\n");
   HAL_Delay(50);
 
+  // ========================================================================
+  // WAIT FOR S0 = 1 BEFORE SYSTEM START (Power-on interrupt check)
+  // ========================================================================
+  // System will NOT start until S0 switch is ON (S0 = 1)
+  // This ensures operator has control from power-on
+  USB_Print("Waiting for S0 switch ON...\r\n");
+
+  while (1)
+  {
+      Var_Update();  // Read switch states
+
+      if (tx_data.switches.s0 == 1)
+      {
+          // S0 is ON - system can start!
+          USB_Print("S0 switch detected ON - Starting system...\r\n");
+          break;  // Exit wait loop
+      }
+
+      // S0 still OFF - keep waiting
+      HAL_Delay(100);
+  }
+
   // Initialize OLED Display (128x64 I2C on PB6/PB7)
   // NOTE: Make sure I2C1 is enabled in CubeMX first!
   // PB6 = I2C1_SCL, PB7 = I2C1_SDA
@@ -212,7 +234,9 @@ int main(void)
     if (last_s0_state == 0)
     {
         // System just turned ON! Show splash screen (initialization)
+        USB_Print("S0 switched ON - System restart\r\n");
         OLED_ShowSplashScreen();
+        HAL_Delay(1000);  // Display splash for 1 second
         last_s0_state = 1;
 
         // Reset all system variables (fresh start)
@@ -222,6 +246,8 @@ int main(void)
         s2_1_hold_counter = 0;
         s1_1_hold_counter = 0;
         motor_active = 0;
+
+        USB_Print("System restarted - Entering SLEEP mode\r\n");
     }
 
     // ========================================================================
