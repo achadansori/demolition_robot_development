@@ -1,4 +1,4 @@
-../Core/Src/control.c:24:6:Control_Init	8	static
-../Core/Src/control.c:38:6:Control_Update	40	static
-../Core/Src/control.c:326:6:Control_EmergencyStop	8	static
-../Core/Src/control.c:337:16:MapJoystickToPWM	24	static
+../Core/Src/control.c:26:6:Control_Init	8	static
+../Core/Src/control.c:40:6:Control_Update	40	static
+../Core/Src/control.c:343:6:Control_EmergencyStop	8	static
+../Core/Src/control.c:354:16:MapJoystickToPWM	24	static
