@@ -666,16 +666,13 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         else
         {
             // Safety checks NOT passed - show instructions
-            OLED_SetCursor(5, 32);
+            OLED_SetCursor(5, 36);
             OLED_WriteString("Center Joysticks", FONT_SIZE_SMALL);
 
-            OLED_SetCursor(5, 40);
-            OLED_WriteString("Set R1 & R8 to 0", FONT_SIZE_SMALL);
-
-            OLED_SetCursor(5, 48);
+            OLED_SetCursor(5, 44);
             OLED_WriteString("Release S0 Button", FONT_SIZE_SMALL);
 
-            OLED_SetCursor(5, 56);
+            OLED_SetCursor(5, 52);
             OLED_WriteString("S1,S2_2,S4,S5 OFF", FONT_SIZE_SMALL);
         }
 
