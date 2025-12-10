@@ -123,7 +123,6 @@ int main(void)
   // Safety tolerances for exiting SLEEP mode
   #define JOYSTICK_CENTER 127
   #define JOYSTICK_TOLERANCE 5   // ±5 points tolerance
-  #define RESISTOR_TOLERANCE 10  // ±10 points tolerance for R1/R8
 
   // Initialize M0 and M1 GPIO pins for LoRa (PB8=M0, PB9=M1)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -312,8 +311,6 @@ int main(void)
             tx_data.joystick.left_y  = 127;
             tx_data.joystick.right_x = 127;
             tx_data.joystick.right_y = 127;
-            tx_data.joystick.r1 = 0;
-            tx_data.joystick.r8 = 0;
 
             // All switches to 0
             tx_data.switches.joy_left_btn1  = 0;
