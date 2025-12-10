@@ -33,3 +33,8 @@ Thumbs.db
 *.user
 *.userosscache
 *.sln.docstates
+# Eclipse IDE
+.metadata/
+Debug/
+Release/
+*.log
