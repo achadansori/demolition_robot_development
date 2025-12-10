@@ -237,7 +237,6 @@ int main(void)
 
         // Step 1: Check if all controls are in SAFE position
         uint8_t joystick_safe = 0;
-        uint8_t resistor_safe = 0;
         uint8_t switches_safe = 0;
 
         // Check joysticks are centered (127 ± 5)
@@ -251,13 +250,6 @@ int main(void)
             (tx_data.joystick.right_y <= JOYSTICK_CENTER + JOYSTICK_TOLERANCE))
         {
             joystick_safe = 1;
-        }
-
-        // Check R1 and R8 are at 0 (0 ± 10)
-        if ((tx_data.joystick.r1 <= RESISTOR_TOLERANCE) &&
-            (tx_data.joystick.r8 <= RESISTOR_TOLERANCE))
-        {
-            resistor_safe = 1;
         }
 
         // Check all switches are 0 (except S0 and S2_1 which are excluded)
@@ -281,7 +273,7 @@ int main(void)
         }
 
         // Step 2: If all safety checks pass, wait for S2_1 HOLD to exit SLEEP mode
-        if (joystick_safe && resistor_safe && switches_safe)
+        if (joystick_safe && switches_safe)
         {
             safety_check_passed = 1;
 
