@@ -605,7 +605,7 @@ void OLED_ShowSplashScreen(void)
   * @brief  Show mode and active cylinders with percentage
   * @param  s5_1: Switch 5_1 state
   * @param  s5_2: Switch 5_2 state
-  * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y, r8, r1]
+  * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y]
   * @retval None
   */
 void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress)
