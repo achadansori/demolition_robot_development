@@ -10,5 +10,5 @@
 ../Core/Src/oled.c:574:13:OLED_DrawBitmap	16	static
 ../Core/Src/oled.c:583:6:OLED_ShowSplashScreen	8	static
 ../Core/Src/oled.c:611:6:OLED_ShowModeScreen	104	static
-../Core/Src/oled.c:814:13:OLED_WriteCommand	32	static
-../Core/Src/oled.c:826:13:OLED_WriteData	56	dynamic
+../Core/Src/oled.c:811:13:OLED_WriteCommand	32	static
+../Core/Src/oled.c:823:13:OLED_WriteData	56	dynamic

@@ -1,8 +1,10 @@
 LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/arch=x86_64
 LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/name=Local
 LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/os=linux
-configDescList=org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:transmitter_f401 Debug,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:control_demoliiton_robot Debug,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:transmitter_demolition_robot Debug
+configDescList=org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:transmitter_f401 Debug,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:control_demoliiton_robot Debug (1),org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:control_demoliiton_robot Debug,org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:transmitter_demolition_robot Debug
 eclipse.preferences.version=1
+org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:control_demoliiton_robot\ Debug\ (1)/activeLaunchMode=run
+org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:control_demoliiton_robot\ Debug\ (1)/activeLaunchTarget=null\:---
 org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:control_demoliiton_robot\ Debug/activeLaunchMode=run
 org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:control_demoliiton_robot\ Debug/activeLaunchTarget=null\:---
 org.eclipse.cdt.dsf.gdb.gdbRemotedescriptorType\:transmitter_demolition_robot\ Debug/activeLaunchMode=run
