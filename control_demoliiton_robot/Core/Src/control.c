@@ -165,6 +165,24 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
             PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
         }
 
+        // --------------------------------------------------------------------
+        // BRAKE - Always ON in UPPER mode (100% PWM)
+        // --------------------------------------------------------------------
+        PWM_SetDutyCycle(PWM_1_BRAKE, 100);
+
+        // --------------------------------------------------------------------
+        // CYLINDER_1_ON - Controlled by joy_right_btn1
+        // Valve solenoid parallel between cylinder 1 and 2
+        // --------------------------------------------------------------------
+        if (lora_data->joy_right_btn1 == 1)
+        {
+            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 100);  // Open valve
+        }
+        else
+        {
+            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);    // Close valve
+        }
+
         // Stop all mobility controls in UPPER mode
         PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
         PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
@@ -290,8 +308,8 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // Stop all excavator controls in LOWER mode
-        PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-        PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+        PWM_SetDutyCycle(PWM_1_BRAKE, 0);              // Stop brake
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);      // Close valve
         PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
         PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
