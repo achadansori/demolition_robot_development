@@ -165,7 +165,9 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
             PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
         }
 
-        // Stop all mobility controls in UPPER mode
+        // Stop unused cylinders and all mobility controls in UPPER mode
+        PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);   // Cylinder 1 not used in UPPER
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
         PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
         PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
         PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
