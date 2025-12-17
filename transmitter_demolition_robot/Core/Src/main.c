@@ -364,9 +364,11 @@ int main(void)
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL - S1_1 HOLD (2 seconds)
+    // MOTOR STARTER CONTROL - S1_1 HOLD (1 second) - SELF-HOLDING
     // ========================================================================
-    // Flow: SLEEP → Safety OK → Hold S2_1 (2s) → Exit SLEEP → Hold S1_1 (2s) → Motor ON
+    // Flow: SLEEP → Safety OK → Hold S2_1 (1s) → Exit SLEEP → Hold S1_1 (1s) → Motor ON (LATCHED)
+    // Motor remains ON even after S1_1 is released (self-holding relay behavior)
+    // Motor only turns OFF when entering SLEEP mode
 
     if (!sleep_mode_active)
     {
@@ -379,20 +381,20 @@ int main(void)
             // Check if held long enough
             if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
             {
-                // S1_1 held for 2 seconds - ACTIVATE MOTOR!
+                // S1_1 held for 1 second - ACTIVATE MOTOR! (Latched/Self-holding)
                 motor_active = 1;
             }
         }
         else
         {
-            // S1_1 released - IMMEDIATELY stop motor (safety!)
-            motor_active = 0;
-            s1_1_hold_counter = 0;  // Reset counter
+            // S1_1 released - Motor stays ON (self-holding), just reset counter
+            s1_1_hold_counter = 0;  // Reset counter for next time
+            // Note: motor_active remains unchanged (stays ON if it was ON)
         }
     }
     else
     {
-        // In SLEEP mode - force motor OFF
+        // In SLEEP mode - force motor OFF (only way to stop motor)
         motor_active = 0;
         s1_1_hold_counter = 0;
     }
