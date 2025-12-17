@@ -8,6 +8,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "control.h"
 #include "pwm.h"
+#include "main.h"
 #include <string.h>
 
 /* Private defines -----------------------------------------------------------*/
