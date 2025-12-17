@@ -120,9 +120,15 @@ int main(void)
   // Motor starter variables
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
 
+  // LOCK mode variables - Auto-lock when joystick inactive for 10 seconds
+  uint8_t lock_mode = 0;           // Lock state (0=UNLOCKED, 1=LOCKED)
+  uint8_t inactivity_counter = 0;  // Counter for joystick inactivity detection
+
   // Safety tolerances for exiting SLEEP mode
   #define JOYSTICK_CENTER 127
   #define JOYSTICK_TOLERANCE 5   // ±5 points tolerance
+  #define LOCK_INACTIVITY_TOLERANCE 2  // ±2 points for lock detection (stricter)
+  #define LOCK_TIMEOUT 100         // 100 cycles x 100ms = 10 seconds inactivity
 
   // Initialize M0 and M1 GPIO pins for LoRa (PB8=M0, PB9=M1)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -402,6 +408,80 @@ int main(void)
     // Update motor state in tx_data before transmission
     tx_data.switches.motor_active = motor_active;
 
+    // ========================================================================
+    // JOYSTICK LOCK MODE - Auto-lock after 10 seconds of inactivity
+    // ========================================================================
+    // Only active when motor is running (not in SLEEP mode and motor_active)
+    // LOCK activates after 10 seconds of joystick inactivity (all joysticks at center ±2)
+    // Press joy_left_btn1 to UNLOCK
+
+    if (!sleep_mode_active && motor_active)
+    {
+        // Motor is running - check for joystick inactivity
+
+        // Check if all joysticks are centered (127 ± 2)
+        uint8_t joysticks_centered = 0;
+        if ((tx_data.joystick.left_x  >= JOYSTICK_CENTER - LOCK_INACTIVITY_TOLERANCE) &&
+            (tx_data.joystick.left_x  <= JOYSTICK_CENTER + LOCK_INACTIVITY_TOLERANCE) &&
+            (tx_data.joystick.left_y  >= JOYSTICK_CENTER - LOCK_INACTIVITY_TOLERANCE) &&
+            (tx_data.joystick.left_y  <= JOYSTICK_CENTER + LOCK_INACTIVITY_TOLERANCE) &&
+            (tx_data.joystick.right_x >= JOYSTICK_CENTER - LOCK_INACTIVITY_TOLERANCE) &&
+            (tx_data.joystick.right_x <= JOYSTICK_CENTER + LOCK_INACTIVITY_TOLERANCE) &&
+            (tx_data.joystick.right_y >= JOYSTICK_CENTER - LOCK_INACTIVITY_TOLERANCE) &&
+            (tx_data.joystick.right_y <= JOYSTICK_CENTER + LOCK_INACTIVITY_TOLERANCE))
+        {
+            joysticks_centered = 1;
+        }
+
+        if (!lock_mode)
+        {
+            // Not locked yet - check inactivity
+            if (joysticks_centered)
+            {
+                // Joysticks centered - increment inactivity counter
+                inactivity_counter++;
+
+                // Check if inactivity timeout reached
+                if (inactivity_counter >= LOCK_TIMEOUT)
+                {
+                    // 10 seconds of inactivity - ACTIVATE LOCK!
+                    lock_mode = 1;
+                    inactivity_counter = 0;
+                }
+            }
+            else
+            {
+                // Joystick moved - reset inactivity counter
+                inactivity_counter = 0;
+            }
+        }
+        else
+        {
+            // LOCKED - wait for joy_left_btn1 to unlock
+            if (tx_data.switches.joy_left_btn1 == 1)
+            {
+                // joy_left_btn1 pressed - UNLOCK!
+                lock_mode = 0;
+                inactivity_counter = 0;
+            }
+        }
+    }
+    else
+    {
+        // In SLEEP mode or motor not active - disable lock
+        lock_mode = 0;
+        inactivity_counter = 0;
+    }
+
+    // If LOCKED, force all joystick values to center (127)
+    if (lock_mode)
+    {
+        tx_data.joystick.left_x  = 127;
+        tx_data.joystick.left_y  = 127;
+        tx_data.joystick.right_x = 127;
+        tx_data.joystick.right_y = 127;
+    }
+
     // Transmit via LoRa using BINARY format (FAST! No parsing needed)
     // Binary is much faster than CSV - only 8 bytes, direct copy
     if (LoRa_IsReady())
@@ -424,6 +504,7 @@ int main(void)
     static uint8_t last_safety_state = 0;
     static uint8_t last_hold_counter = 0;
     static uint8_t last_motor_state = 0;
+    static uint8_t last_lock_state = 0;
 
     uint8_t current_hold_progress = sleep_mode_active ? s2_1_hold_counter : s1_1_hold_counter;
 
@@ -431,6 +512,7 @@ int main(void)
         safety_check_passed != last_safety_state ||
         current_hold_progress != last_hold_counter ||
         motor_active != last_motor_state ||
+        lock_mode != last_lock_state ||
         ++oled_counter >= 10)
     {
         oled_counter = 0;
@@ -438,7 +520,8 @@ int main(void)
         last_safety_state = safety_check_passed;
         last_hold_counter = current_hold_progress;
         last_motor_state = motor_active;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active);
+        last_lock_state = lock_mode;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active, lock_mode);
         OLED_Update();
     }
 
