@@ -8,6 +8,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "control.h"
 #include "pwm.h"
+#include "main.h"
 #include <string.h>
 
 /* Private defines -----------------------------------------------------------*/
@@ -339,28 +340,29 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL (PWM_21 on PE6)
+    // MOTOR STARTER CONTROL (Digital GPIO on PE6 - 3.3V Output)
     // ========================================================================
     // Motor starter is controlled by S1_1 hold logic from transmitter
-    // When motor_active = 1, output 100% PWM to trigger relay/contactor
-    // When motor_active = 0, output 0% PWM to stop motor
+    // When motor_active = 1, output HIGH (3.3V) to trigger relay/contactor
+    // When motor_active = 0, output LOW (0V) to stop motor
     if (lora_data->motor_active == 1)
     {
-        PWM_SetDutyCycle(PWM_21_MOTOR_STARTER, 100);  // Full PWM to trigger motor starter
+        HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_SET);  // 3.3V HIGH
     }
     else
     {
-        PWM_SetDutyCycle(PWM_21_MOTOR_STARTER, 0);    // Stop motor starter
+        HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_RESET);  // 0V LOW
     }
 }
 
 /**
-  * @brief  Emergency stop - set all PWM outputs to 0%
+  * @brief  Emergency stop - set all PWM outputs to 0% and motor starter OFF
   * @retval None
   */
 void Control_EmergencyStop(void)
 {
     PWM_StopAll();
+    HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_RESET);  // Motor OFF
 }
 
 /**
