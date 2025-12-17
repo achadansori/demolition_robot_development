@@ -114,6 +114,10 @@ void Error_Handler(void);
 #define LORA_M0_GPIO_Port GPIOE
 #define LORA_M1_Pin GPIO_PIN_5
 #define LORA_M1_GPIO_Port GPIOE
+
+// Motor Starter Control (Digital Output 3.3V)
+#define MOTOR_STARTER_Pin GPIO_PIN_6
+#define MOTOR_STARTER_GPIO_Port GPIOE
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
