@@ -51,9 +51,11 @@ typedef enum {
     PWM_18_TRACK_RIGHT_BACKWARD,   // TIM1_CH3 (PE13)
     PWM_19_TRACK_LEFT_FORWARD,     // TIM4_CH2 (PD13)
     PWM_20_TRACK_LEFT_BACKWARD,    // TIM1_CH4 (PE14)
-    PWM_21_MOTOR_STARTER,          // TIM9_CH2 (PE6) - Motor self-holding trigger
-    PWM_CHANNEL_COUNT = 21
+    PWM_CHANNEL_COUNT = 20
 } PWM_Channel_t;
+
+// Note: Motor Starter (PE6) is now a digital GPIO output, not PWM
+// Use HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, state)
 
 /* Public function prototypes ------------------------------------------------*/
 void PWM_Init(void);

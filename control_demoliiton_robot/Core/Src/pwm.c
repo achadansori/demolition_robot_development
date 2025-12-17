@@ -386,9 +386,6 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
         case PWM_18_TRACK_RIGHT_BACKWARD: TIM1->CCR3 = ccr_value; break;  // PE13
         case PWM_20_TRACK_LEFT_BACKWARD:  TIM1->CCR4 = ccr_value; break;  // PE14
 
-        // TIM9 channels
-        case PWM_21_MOTOR_STARTER:  TIM9->CCR2 = ccr_value; break;  // PE6
-
         default: break;
     }
 }
