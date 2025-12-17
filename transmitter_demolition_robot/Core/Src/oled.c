@@ -606,9 +606,13 @@ void OLED_ShowSplashScreen(void)
   * @param  s5_1: Switch 5_1 state
   * @param  s5_2: Switch 5_2 state
   * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y]
+  * @param  sleep_mode: 1 if in SLEEP mode, 0 if normal operation
+  * @param  safety_ok: 1 if safety checks passed (only used in SLEEP mode)
+  * @param  hold_progress: S2_1 hold counter in SLEEP mode, S1_1 hold counter in normal mode
+  * @param  motor_active: 1 if motor is ON, 0 if motor is OFF
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active)
 {
     OLED_Clear();
 
@@ -677,6 +681,47 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         }
 
         return;  // Exit early - don't show normal mode info
+    }
+
+    // ========================================================================
+    // MOTOR STARTER CONTROL - S1_1 HOLD Display (After exiting SLEEP mode)
+    // ========================================================================
+    if (!motor_active)
+    {
+        // Motor is not active yet - show S1 hold instructions/progress
+        // Draw info box
+        OLED_DrawRect(5, 18, 118, 40);
+
+        // Display title
+        OLED_SetCursor(15, 24);
+        OLED_WriteString("MOTOR READY", FONT_SIZE_NORMAL);
+
+        if (hold_progress > 0)
+        {
+            // S1_1 is being held - show progress
+            char progress_text[20];
+            uint8_t percent = (hold_progress * 100) / 10;  // 10 = S1_1_HOLD_REQUIRED (1 sec)
+            snprintf(progress_text, sizeof(progress_text), "Holding: %d%%", percent);
+
+            OLED_SetCursor(28, 32);
+            OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
+
+            // Draw progress bar
+            uint8_t bar_width = (hold_progress * 100) / 10;  // 0-100 pixels
+            OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
+            OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
+        }
+        else
+        {
+            // Ready to hold S1_1 - show instruction
+            OLED_SetCursor(8, 36);
+            OLED_WriteString("Hold S1 UP", FONT_SIZE_NORMAL);
+
+            OLED_SetCursor(8, 48);
+            OLED_WriteString("to start motor", FONT_SIZE_NORMAL);
+        }
+
+        return;  // Exit early - don't show normal mode info until motor is active
     }
 
     // Extract joystick values

@@ -421,19 +421,22 @@ int main(void)
     static uint8_t last_sleep_state = 0;
     static uint8_t last_safety_state = 0;
     static uint8_t last_hold_counter = 0;
+    static uint8_t last_motor_state = 0;
 
     uint8_t current_hold_progress = sleep_mode_active ? s2_1_hold_counter : s1_1_hold_counter;
 
     if (sleep_mode_active != last_sleep_state ||
         safety_check_passed != last_safety_state ||
         current_hold_progress != last_hold_counter ||
+        motor_active != last_motor_state ||
         ++oled_counter >= 10)
     {
         oled_counter = 0;
         last_sleep_state = sleep_mode_active;
         last_safety_state = safety_check_passed;
         last_hold_counter = current_hold_progress;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress);
+        last_motor_state = motor_active;
+        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active);
         OLED_Update();
     }
 
