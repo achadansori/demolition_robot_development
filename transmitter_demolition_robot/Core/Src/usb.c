@@ -97,7 +97,7 @@ void USB_PrintData(Transmitter_Data_t* data)
 
     // Single line format - easy to read, no screen corruption
     len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%03d,R1=%03d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d MOTOR=%d\r\n",
+        "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%03d,R1=%03d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
         data->joystick.left_x,
         data->joystick.left_y,
         data->switches.joy_left_btn1,
@@ -112,8 +112,7 @@ void USB_PrintData(Transmitter_Data_t* data)
         data->switches.s1_1, data->switches.s1_2,
         data->switches.s2_1, data->switches.s2_2,
         data->switches.s4_1, data->switches.s4_2,
-        data->switches.s5_1, data->switches.s5_2,
-        data->switches.motor_active);
+        data->switches.s5_1, data->switches.s5_2);
 
     CDC_Transmit_FS((uint8_t*)usb_buffer, len);
 }
