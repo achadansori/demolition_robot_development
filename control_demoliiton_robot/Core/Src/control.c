@@ -352,6 +352,21 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     {
         HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_RESET);  // LOW - Motor OFF
     }
+
+    // ========================================================================
+    // S0 SWITCH OUTPUT CONTROL (Digital GPIO on PE8)
+    // ========================================================================
+    // S0 switch controls PE8 output (inverted logic)
+    // When S0 = 0, output HIGH
+    // When S0 = 1, output LOW
+    if (lora_data->s0 == 0)
+    {
+        HAL_GPIO_WritePin(S0_OUTPUT_GPIO_Port, S0_OUTPUT_Pin, GPIO_PIN_SET);  // HIGH when S0=0
+    }
+    else
+    {
+        HAL_GPIO_WritePin(S0_OUTPUT_GPIO_Port, S0_OUTPUT_Pin, GPIO_PIN_RESET);  // LOW when S0=1
+    }
 }
 
 /**
@@ -362,6 +377,7 @@ void Control_EmergencyStop(void)
 {
     PWM_StopAll();
     HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_RESET);  // Motor OFF
+    HAL_GPIO_WritePin(S0_OUTPUT_GPIO_Port, S0_OUTPUT_Pin, GPIO_PIN_RESET);  // S0 Output OFF
 }
 
 /**

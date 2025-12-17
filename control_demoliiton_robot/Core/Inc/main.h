@@ -118,6 +118,10 @@ void Error_Handler(void);
 // Motor Starter Control (Digital Output)
 #define MOTOR_STARTER_Pin GPIO_PIN_6
 #define MOTOR_STARTER_GPIO_Port GPIOE
+
+// S0 Switch Output Control (Digital Output)
+#define S0_OUTPUT_Pin GPIO_PIN_8
+#define S0_OUTPUT_GPIO_Port GPIOE
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
