@@ -11,12 +11,35 @@
 #include <string.h>
 
 /* Private defines -----------------------------------------------------------*/
-// PWM Frequency: 200 Hz (5ms period) - EASY to measure on oscilloscope at 5ms/div
-// Timer clock = 168 MHz (TIM1, TIM8) or 84 MHz (TIM2, TIM3, TIM4)
-#define PWM_FREQUENCY       200     // 200Hz - 5ms period (perfect for oscilloscope measurement!)
-#define PWM_PRESCALER_APB2  167     // For TIM1, TIM8: 168MHz / (167+1) = 1MHz
-#define PWM_PRESCALER_APB1  83      // For TIM2, TIM3, TIM4: 84MHz / (83+1) = 1MHz
-#define PWM_PERIOD          4999    // 1MHz / (4999+1) = 200 Hz (5ms period)
+// ============================================================================
+// PWM FREQUENCY CONFIGURATION - CHANGE THIS VALUE TO ADJUST SOLENOID RESPONSE
+// ============================================================================
+// Recommended values:
+//   50Hz  (20ms)  - Very slow, maximum solenoid settling time (for very sticky valves)
+//   100Hz (10ms)  - Slow, good for preventing sticking (CURRENT SETTING)
+//   200Hz (5ms)   - Medium, balanced performance
+//   500Hz (2ms)   - Fast, responsive control
+//   1000Hz (1ms)  - Very fast, maximum precision (may cause sticking at low duty)
+// ============================================================================
+#define PWM_FREQUENCY_HZ    300     // <- CHANGE THIS VALUE (50-1000 Hz recommended)
+
+// ============================================================================
+// AUTO-CALCULATED VALUES (DO NOT MODIFY BELOW THIS LINE)
+// ============================================================================
+// Timer base clocks
+#define TIM_APB2_CLOCK      168000000UL  // TIM1, TIM8, TIM9 run at 168MHz
+#define TIM_APB1_CLOCK      84000000UL   // TIM2, TIM3, TIM4 run at 84MHz
+
+// Prescaler values to get 1MHz timer clock (for easy period calculation)
+#define PWM_PRESCALER_APB2  ((TIM_APB2_CLOCK / 1000000UL) - 1)  // 168MHz -> 1MHz
+#define PWM_PRESCALER_APB1  ((TIM_APB1_CLOCK / 1000000UL) - 1)  // 84MHz -> 1MHz
+
+// Period value: 1MHz / PWM_FREQUENCY_HZ (minus 1 for 0-based counting)
+#define PWM_PERIOD          ((1000000UL / PWM_FREQUENCY_HZ) - 1)
+
+// Convenience defines for debugging
+#define PWM_PERIOD_MS       (1000.0f / PWM_FREQUENCY_HZ)
+// ============================================================================
 
 /* Private variables ---------------------------------------------------------*/
 static uint8_t pwm_duty[PWM_CHANNEL_COUNT] = {0};
@@ -28,7 +51,6 @@ static void PWM_TIM2_Init(void);
 static void PWM_TIM3_Init(void);
 static void PWM_TIM4_Init(void);
 static void PWM_TIM8_Init(void);
-static void PWM_TIM9_Init(void);
 
 /**
   * @brief  Initialize all PWM channels
@@ -45,7 +67,6 @@ void PWM_Init(void)
     PWM_TIM3_Init();
     PWM_TIM4_Init();
     PWM_TIM8_Init();
-    PWM_TIM9_Init();
 
     // Initialize all channels to 0%
     PWM_StopAll();
@@ -99,12 +120,21 @@ static void PWM_ConfigureGPIO(void)
     GPIOC->AFR[1] |= (3<<((8-8)*4)) | (3<<((9-8)*4));  // AF3
     GPIOC->OSPEEDR |= (3<<(6*2)) | (3<<(7*2)) | (3<<(8*2)) | (3<<(9*2));
 
-    // Configure TIM9 pin (PE6) - AF3
+    // Configure PE6 as GPIO output for Motor Starter
     GPIOE->MODER &= ~(3<<(6*2));
-    GPIOE->MODER |= (2<<(6*2));  // Alternate function
-    GPIOE->AFR[0] &= ~(0xF<<(6*4));
-    GPIOE->AFR[0] |= (3<<(6*4));  // AF3
-    GPIOE->OSPEEDR |= (3<<(6*2));  // High speed
+    GPIOE->MODER |= (1<<(6*2));     // GPIO output mode
+    GPIOE->OTYPER &= ~(1<<6);       // Push-pull output
+    GPIOE->PUPDR &= ~(3<<(6*2));    // No pull-up, no pull-down
+    GPIOE->OSPEEDR |= (3<<(6*2));   // High speed
+    GPIOE->BSRR = (1<<(6+16));      // Set LOW initially (BR6)
+
+    // Configure PE8 as GPIO output for Emergency Stop
+    GPIOE->MODER &= ~(3<<(8*2));
+    GPIOE->MODER |= (1<<(8*2));     // GPIO output mode
+    GPIOE->OTYPER &= ~(1<<8);       // Push-pull output
+    GPIOE->PUPDR &= ~(3<<(8*2));    // No pull-up, no pull-down
+    GPIOE->OSPEEDR |= (3<<(8*2));   // High speed
+    GPIOE->BSRR = (1<<(8+16));      // Set LOW initially (BR8)
 }
 
 /**
@@ -118,7 +148,7 @@ static void PWM_TIM1_Init(void)
 
     // Configure timer
     TIM1->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
-    TIM1->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
+    TIM1->ARR = PWM_PERIOD;          // 1MHz / 10000 = 100Hz (10ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM1->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -135,7 +165,7 @@ static void PWM_TIM1_Init(void)
     TIM1->CCR3 = 0;
     TIM1->CCR4 = 0;
 
-    // Enable channels
+    // Enable main channels (CH1, CH2, CH3, CH4)
     TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E;
 
     // Enable auto-reload preload
@@ -159,7 +189,7 @@ static void PWM_TIM2_Init(void)
 
     // Configure timer
     TIM2->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
-    TIM2->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
+    TIM2->ARR = PWM_PERIOD;          // 1MHz / 10000 = 100Hz (10ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM2->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -197,7 +227,7 @@ static void PWM_TIM3_Init(void)
 
     // Configure timer
     TIM3->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
-    TIM3->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
+    TIM3->ARR = PWM_PERIOD;          // 1MHz / 10000 = 100Hz (10ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM3->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -235,7 +265,7 @@ static void PWM_TIM4_Init(void)
 
     // Configure timer
     TIM4->PSC = PWM_PRESCALER_APB1;  // 84MHz / 84 = 1MHz
-    TIM4->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
+    TIM4->ARR = PWM_PERIOD;          // 1MHz / 10000 = 100Hz (10ms period)
 
     // Configure all 4 channels as PWM mode 1
     TIM4->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -273,7 +303,7 @@ static void PWM_TIM8_Init(void)
 
     // Configure timer
     TIM8->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
-    TIM8->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
+    TIM8->ARR = PWM_PERIOD;          // 1MHz / 10000 = 100Hz (10ms period)
 
     // Configure channels 1, 2, 3, 4 as PWM mode 1
     TIM8->CCMR1 &= ~(TIM_CCMR1_OC1M | TIM_CCMR1_OC2M);
@@ -303,38 +333,6 @@ static void PWM_TIM8_Init(void)
     TIM8->CR1 |= TIM_CR1_CEN;
 }
 
-/**
-  * @brief  Initialize TIM9 (General-purpose timer) for PWM - APB2 168MHz
-  * @retval None
-  */
-static void PWM_TIM9_Init(void)
-{
-    // Enable TIM9 clock
-    RCC->APB2ENR |= RCC_APB2ENR_TIM9EN;
-
-    // Configure timer
-    TIM9->PSC = PWM_PRESCALER_APB2;  // 168MHz / 168 = 1MHz
-    TIM9->ARR = PWM_PERIOD;          // 1MHz / 5000 = 200Hz (5ms period)
-
-    // Configure channel 2 as PWM mode 1 (PE6 = TIM9_CH2)
-    TIM9->CCMR1 &= ~TIM_CCMR1_OC2M;
-    TIM9->CCMR1 |= (6 << TIM_CCMR1_OC2M_Pos);  // PWM mode 1
-    TIM9->CCMR1 |= TIM_CCMR1_OC2PE;           // Preload enable
-
-    // Set initial duty cycle to 0
-    TIM9->CCR2 = 0;
-
-    // Enable channel 2
-    TIM9->CCER |= TIM_CCER_CC2E;
-
-    // Enable auto-reload preload
-    TIM9->CR1 |= TIM_CR1_ARPE;
-
-    // NOTE: TIM9 is general-purpose timer (not advanced), so no BDTR_MOE needed
-
-    // Start timer
-    TIM9->CR1 |= TIM_CR1_CEN;
-}
 
 /**
   * @brief  Set PWM duty cycle for a channel
@@ -381,7 +379,7 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
         case PWM_19_TRACK_LEFT_FORWARD: TIM4->CCR2 = ccr_value; break;  // PD13
 
         // TIM1 channels
-        case PWM_16_OUTRIGGER_RIGHT_DOWN: TIM1->CCR1 = ccr_value; break;  // PE9
+        case PWM_16_OUTRIGGER_RIGHT_DOWN: TIM1->CCR1 = ccr_value; break;  // PE9 (CH1)
         case PWM_17_TRACK_RIGHT_FORWARD:  TIM1->CCR2 = ccr_value; break;  // PE11
         case PWM_18_TRACK_RIGHT_BACKWARD: TIM1->CCR3 = ccr_value; break;  // PE13
         case PWM_20_TRACK_LEFT_BACKWARD:  TIM1->CCR4 = ccr_value; break;  // PE14

@@ -115,9 +115,21 @@ void Error_Handler(void);
 #define LORA_M1_Pin GPIO_PIN_5
 #define LORA_M1_GPIO_Port GPIOE
 
-// Motor Starter Control (Digital Output 3.3V)
+// Motor Starter Control (Digital GPIO Output on PE6)
+// Controlled by S1_1 hold AND sleep mode:
+// - Sleep mode → PE6 = LOW (forced in main.c)
+// - S1_1 = 1 (hold) → PE6 = HIGH (in control.c)
+// - Otherwise → PE6 = LOW
 #define MOTOR_STARTER_Pin GPIO_PIN_6
 #define MOTOR_STARTER_GPIO_Port GPIOE
+
+// Emergency Stop Control (Digital GPIO Output on PE8)
+// Controlled by sleep mode:
+// - Sleep mode → PE8 = HIGH (in main.c)
+// - Normal mode → PE8 = LOW (in main.c)
+#define EMERGENCY_STOP_Pin GPIO_PIN_8
+#define EMERGENCY_STOP_GPIO_Port GPIOE
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

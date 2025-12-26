@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+ /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -230,6 +230,9 @@ int main(void)
           safety_transition_step = 0;
           // PWM will be restored by Control_Update() below
 
+          // EXIT SLEEP MODE: Set PE8 to LOW (normal mode)
+          GPIOE->BSRR = (1<<(8+16));  // BR8 = reset PE8 to LOW
+
           // Send recovery message to USB
           char *recovery_msg = "\r\n*** COMM RESTORED! Resuming normal operation ***\r\n";
           CDC_Transmit_FS((uint8_t*)recovery_msg, strlen(recovery_msg));
@@ -295,8 +298,12 @@ int main(void)
           pwm_backup[i] = PWM_GetDutyCycle((PWM_Channel_t)i);
         }
 
+        // ENTER SLEEP MODE: Set PE8 to HIGH, PE6 to LOW
+        GPIOE->BSRR = (1<<8);       // BS8 = set PE8 to HIGH
+        GPIOE->BSRR = (1<<(6+16));  // BR6 = reset PE6 to LOW
+
         // Send warning message to USB
-        char *warning_msg = "\r\n*** COMM TIMEOUT! Transitioning PWM to 0... ***\r\n";
+        char *warning_msg = "\r\n*** COMM TIMEOUT! Entering sleep mode ***\r\n";
         CDC_Transmit_FS((uint8_t*)warning_msg, strlen(warning_msg));
       }
 

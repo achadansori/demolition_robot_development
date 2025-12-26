@@ -5,16 +5,17 @@
   *                   Uses TIM1, TIM2, TIM3, TIM4, TIM8, TIM9
   *
   * @note           PWM Configuration for Hydraulic Proportional Valves:
-  *                 - Frequency: 1kHz (1ms period) - OPTIMAL for solenoid valves
+  *                 - Frequency: CONFIGURABLE in pwm.c (default: 100Hz / 10ms period)
   *                 - Duty Cycle: 0-100% maps to 0-3.3V average
   *                 - Register-based implementation for direct hardware control
   *                 - Each channel drives TIP122 base through resistor
   *
-  * @note           Why 1kHz?
-  *                 - Proportional solenoid valves respond best at 200Hz-2kHz
-  *                 - 1kHz is sweet spot: smooth control + fast response
-  *                 - Lower than 10kHz = less heat, longer valve life
-  *                 - No buzzing/chattering noise
+  * @note           Frequency Configuration (in pwm.c):
+  *                 - Change PWM_FREQUENCY_HZ define to adjust solenoid response
+  *                 - Lower frequency (50-100Hz) prevents sticking at low duty cycles
+  *                 - Higher frequency (500-1000Hz) gives faster, more precise control
+  *                 - Current: 100Hz - good balance for preventing solenoid sticking
+  *                 - Valid range: 50Hz-2kHz (proportional valve operating range)
   ******************************************************************************
   */
 
@@ -53,9 +54,6 @@ typedef enum {
     PWM_20_TRACK_LEFT_BACKWARD,    // TIM1_CH4 (PE14)
     PWM_CHANNEL_COUNT = 20
 } PWM_Channel_t;
-
-// Note: Motor Starter (PE6) is now a digital GPIO output (3.3V), not PWM
-// Use HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_SET/RESET)
 
 /* Public function prototypes ------------------------------------------------*/
 void PWM_Init(void);

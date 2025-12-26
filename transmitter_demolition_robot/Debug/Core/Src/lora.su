@@ -1,6 +1,0 @@
-../Core/Src/lora.c:47:16:LoRa_CalculateChecksum	24	static
-../Core/Src/lora.c:62:13:LoRa_SetMode	16	static
-../Core/Src/lora.c:94:6:LoRa_Init	24	static
-../Core/Src/lora.c:116:6:LoRa_Configure	24	static
-../Core/Src/lora.c:170:6:LoRa_IsReady	4	static
-../Core/Src/lora.c:181:6:LoRa_SendBinary	32	static

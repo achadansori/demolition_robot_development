@@ -1,5 +1,0 @@
-../Core/Src/var.c:47:6:Var_Init	1
-../Core/Src/var.c:62:6:Var_Update	1
-../Core/Src/var.c:75:10:Var_GetBinaryData	1
-../Core/Src/var.c:84:10:Var_GetDataSize	1
-../Core/Src/var.c:93:13:Var_GetCSVString	1

@@ -1,4 +1,4 @@
-../Core/Src/control.c:26:6:Control_Init	1
-../Core/Src/control.c:40:6:Control_Update	29
-../Core/Src/control.c:361:6:Control_EmergencyStop	1
-../Core/Src/control.c:372:16:MapJoystickToPWM	6
+../Core/Src/control.c:30:6:Control_Init	1
+../Core/Src/control.c:44:6:Control_Update	29
+../Core/Src/control.c:367:6:Control_EmergencyStop	1
+../Core/Src/control.c:378:16:MapJoystickToPWM	6

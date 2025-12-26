@@ -14,8 +14,11 @@
 /* Private defines -----------------------------------------------------------*/
 #define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
 #define JOYSTICK_DEADZONE   10      // Deadzone around center to prevent drift
-#define PWM_MIN             10      // Minimum PWM output (10%)
-#define PWM_MAX             55      // Maximum PWM output (55%)
+#define PWM_MIN             55      // Minimum PWM output (10%)
+#define PWM_MAX             100      // Maximum PWM output (55%)
+
+/* Private variables ---------------------------------------------------------*/
+// No private variables needed - all state is hold-based
 
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse);
@@ -340,18 +343,20 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL (Digital GPIO on PE6 - 3.3V Output)
+    // PE6 (MOTOR STARTER) - GPIO CONTROL
     // ========================================================================
-    // Motor starter is controlled by S1_1 hold logic from transmitter
-    // When motor_active = 1, output HIGH (3.3V) to trigger relay/contactor
-    // When motor_active = 0, output LOW (0V) to stop motor
-    if (lora_data->motor_active == 1)
+    // Motor starter controlled by S1_1 hold
+    // - S1_1 = 1 (hold) → PE6 = HIGH
+    // - Otherwise → PE6 = LOW
+    // Note: PE6 is forced LOW during sleep mode in main.c
+
+    if (lora_data->s1_1 == 1)
     {
-        HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_SET);  // 3.3V HIGH
+        GPIOE->BSRR = (1<<6);      // BS6 = set PE6 to HIGH
     }
     else
     {
-        HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_RESET);  // 0V LOW
+        GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
     }
 }
 
@@ -361,8 +366,7 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
   */
 void Control_EmergencyStop(void)
 {
-    PWM_StopAll();
-    HAL_GPIO_WritePin(MOTOR_STARTER_GPIO_Port, MOTOR_STARTER_Pin, GPIO_PIN_RESET);  // Motor OFF
+    PWM_StopAll();  // This will set all PWM channels to 0%
 }
 
 /**

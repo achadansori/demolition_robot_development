@@ -610,10 +610,9 @@ void OLED_ShowSplashScreen(void)
   * @param  safety_ok: 1 if safety checks passed (only used in SLEEP mode)
   * @param  hold_progress: S2_1 hold counter in SLEEP mode, S1_1 hold counter in normal mode
   * @param  motor_active: 1 if motor is ON, 0 if motor is OFF
-  * @param  lock_mode: 1 if joystick is LOCKED, 0 if unlocked
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active, uint8_t lock_mode)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active)
 {
     OLED_Clear();
 
@@ -665,7 +664,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
                 OLED_WriteString("Controls Centered", FONT_SIZE_NORMAL);
 
                 OLED_SetCursor(15, 48);
-                OLED_WriteString("Hold S2 UP", FONT_SIZE_NORMAL);
+                OLED_WriteString("Hold S2_1 UP", FONT_SIZE_NORMAL);
             }
         }
         else
@@ -680,28 +679,6 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
             OLED_SetCursor(5, 52);
             OLED_WriteString("S1,S2_2,S4,S5 OFF", FONT_SIZE_SMALL);
         }
-
-        return;  // Exit early - don't show normal mode info
-    }
-
-    // ========================================================================
-    // LOCK MODE - Joystick Auto-Lock Display (Second Priority)
-    // ========================================================================
-    if (lock_mode)
-    {
-        // Draw warning box
-        OLED_DrawRect(5, 18, 118, 40);
-        OLED_DrawRect(6, 19, 116, 38);  // Double border for emphasis
-
-        // Display LOCK MODE status
-        OLED_SetCursor(28, 24);
-        OLED_WriteString("** LOCKED **", FONT_SIZE_NORMAL);
-
-        OLED_SetCursor(8, 36);
-        OLED_WriteString("Joystick Locked", FONT_SIZE_NORMAL);
-
-        OLED_SetCursor(8, 48);
-        OLED_WriteString("Press JL Btn1", FONT_SIZE_NORMAL);
 
         return;  // Exit early - don't show normal mode info
     }
@@ -738,7 +715,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         {
             // Ready to hold S1_1 - show instruction
             OLED_SetCursor(8, 36);
-            OLED_WriteString("Hold S1 UP", FONT_SIZE_NORMAL);
+            OLED_WriteString("Hold S1_1 UP", FONT_SIZE_NORMAL);
 
             OLED_SetCursor(8, 48);
             OLED_WriteString("to start motor", FONT_SIZE_NORMAL);
