@@ -128,13 +128,13 @@ static void PWM_ConfigureGPIO(void)
     GPIOE->OSPEEDR |= (3<<(6*2));   // High speed
     GPIOE->BSRR = (1<<(6+16));      // Set LOW initially (BR6)
 
-    // Configure PE8 as GPIO output for Emergency Stop
-    GPIOE->MODER &= ~(3<<(8*2));
-    GPIOE->MODER |= (1<<(8*2));     // GPIO output mode
-    GPIOE->OTYPER &= ~(1<<8);       // Push-pull output
-    GPIOE->PUPDR &= ~(3<<(8*2));    // No pull-up, no pull-down
-    GPIOE->OSPEEDR |= (3<<(8*2));   // High speed
-    GPIOE->BSRR = (1<<(8+16));      // Set LOW initially (BR8)
+    // Configure PB8 as GPIO output for Emergency Stop
+    GPIOB->MODER &= ~(3<<(8*2));
+    GPIOB->MODER |= (1<<(8*2));     // GPIO output mode
+    GPIOB->OTYPER &= ~(1<<8);       // Push-pull output
+    GPIOB->PUPDR &= ~(3<<(8*2));    // No pull-up, no pull-down
+    GPIOB->OSPEEDR |= (3<<(8*2));   // High speed
+    GPIOB->BSRR = (1<<(8+16));      // Set LOW initially (BR8)
 }
 
 /**

@@ -14,8 +14,8 @@
 /* Private defines -----------------------------------------------------------*/
 #define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
 #define JOYSTICK_DEADZONE   10      // Deadzone around center to prevent drift
-#define PWM_MIN             55      // Minimum PWM output (10%)
-#define PWM_MAX             100      // Maximum PWM output (55%)
+#define PWM_MIN             65      // Minimum PWM output (10%)
+#define PWM_MAX             80      // Maximum PWM output (55%)
 
 /* Private variables ---------------------------------------------------------*/
 // No private variables needed - all state is hold-based

@@ -123,12 +123,12 @@ void Error_Handler(void);
 #define MOTOR_STARTER_Pin GPIO_PIN_6
 #define MOTOR_STARTER_GPIO_Port GPIOE
 
-// Emergency Stop Control (Digital GPIO Output on PE8)
+// Emergency Stop Control (Digital GPIO Output on PB8)
 // Controlled by sleep mode:
-// - Sleep mode → PE8 = HIGH (in main.c)
-// - Normal mode → PE8 = LOW (in main.c)
+// - Sleep mode → PB8 = HIGH (in main.c)
+// - Normal mode → PB8 = LOW (in main.c)
 #define EMERGENCY_STOP_Pin GPIO_PIN_8
-#define EMERGENCY_STOP_GPIO_Port GPIOE
+#define EMERGENCY_STOP_GPIO_Port GPIOB
 
 /* USER CODE END Private defines */
 
