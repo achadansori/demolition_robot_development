@@ -442,9 +442,9 @@ int main(void)
         OLED_Update();
     }
 
-    // Delay 50ms for faster response (20Hz update rate - OPTIMIZED)
-    // Combined with Air Rate 2: Expected total latency ~150ms
-    HAL_Delay(50);
+    // Delay 100ms for stable transmission (10Hz update rate)
+    // Slower rate = more time for LoRa to process, reduces delay
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
