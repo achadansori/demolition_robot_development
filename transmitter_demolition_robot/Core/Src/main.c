@@ -442,9 +442,10 @@ int main(void)
         OLED_Update();
     }
 
-    // Delay 100ms for stable transmission (10Hz update rate)
-    // Slower rate = more time for LoRa to process, reduces delay
-    HAL_Delay(100);
+    // Delay 20ms for faster response (50Hz update rate)
+    // Higher update rate = more responsive control
+    // Note: LoRa transmission is still bottleneck (~200-400ms)
+    HAL_Delay(20);
   }
   /* USER CODE END 3 */
 }
