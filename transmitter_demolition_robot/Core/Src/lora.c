@@ -31,7 +31,7 @@ static bool lora_ready = false;
 // Configuration parameters (MUST BE SAME for TX and RX)
 #define LORA_ADDRESS        0x0000      // Device address
 #define LORA_CHANNEL        23          // Channel 23 = 873.125 MHz
-#define LORA_AIR_RATE       2           // Air rate 2 (62.5kbps, ~100ms ToA - OPTIMIZED for low latency)
+#define LORA_AIR_RATE       5           // Air rate 5 (Tested as fastest and most stable)
 #define LORA_TX_POWER       0           // 22dBm max power
 
 /* Private function prototypes -----------------------------------------------*/
