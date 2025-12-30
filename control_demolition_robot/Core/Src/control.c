@@ -14,14 +14,40 @@
 /* Private defines -----------------------------------------------------------*/
 #define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
 #define JOYSTICK_DEADZONE   10      // Deadzone around center to prevent drift
-#define PWM_MIN             65      // Minimum PWM output (10%)
-#define PWM_MAX             80      // Maximum PWM output (55%)
 
 /* Private variables ---------------------------------------------------------*/
-// No private variables needed - all state is hold-based
+// PWM limits per output channel (min, max) - adjustable per solenoid
+typedef struct {
+    uint8_t min;  // Minimum PWM output (%)
+    uint8_t max;  // Maximum PWM output (%)
+} PWM_Limits_t;
+
+// PWM limits for each output - indexed by PWM channel enum
+static PWM_Limits_t pwm_limits[20] = {
+    [PWM_1_BRAKE]                    = {00, 80},  // Brake
+    [PWM_2_CYLINDER_1_ON]            = {00, 80},  // Cylinder 1 ON
+    [PWM_3_CYLINDER_2_OUT]           = {00, 80},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {00, 80},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {00, 80},  // Cylinder 3 OUT (Bucket)
+    [PWM_6_CYLINDER_3_IN]            = {00, 80},  // Cylinder 3 IN (Bucket)
+    [PWM_7_CYLINDER_4_OUT]           = {00, 80},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {00, 80},  // Cylinder 4 IN
+    [PWM_9_TOOL_1]                   = {00, 80},  // Tool 1 (Reserved)
+    [PWM_10_TOOL_2]                  = {00, 80},  // Tool 2 (Reserved)
+    [PWM_11_SLEW_CW]                 = {00, 80},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {00, 80},  // Slew CCW
+    [PWM_13_OUTRIGGER_LEFT_UP]       = {00, 100},  // Outrigger Left UP
+    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {00, 100},  // Outrigger Left DOWN
+    [PWM_15_OUTRIGGER_RIGHT_UP]      = {00, 100},  // Outrigger Right UP
+    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {00, 100},  // Outrigger Right DOWN
+    [PWM_17_TRACK_RIGHT_FORWARD]     = {00, 80},  // Track Right FORWARD
+    [PWM_18_TRACK_RIGHT_BACKWARD]    = {00, 80},  // Track Right BACKWARD
+    [PWM_19_TRACK_LEFT_FORWARD]      = {00, 80},  // Track Left FORWARD
+    [PWM_20_TRACK_LEFT_BACKWARD]     = {00, 80},  // Track Left BACKWARD
+};
 
 /* Private function prototypes -----------------------------------------------*/
-static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse);
+static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channel_t channel);
 
 /**
   * @brief  Initialize control system
@@ -70,14 +96,14 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         if (lora_data->joy_left_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
             // Moving DOWN (0-117) → Cylinder 3 DOWN
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, true);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, true, PWM_6_CYLINDER_3_IN);
             PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, pwm_value);
             PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
         }
         else if (lora_data->joy_left_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
             // Moving UP (137-255) → Cylinder 3 UP
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, false);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, false, PWM_5_CYLINDER_3_OUT);
             PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, pwm_value);
             PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
         }
@@ -97,14 +123,14 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         if (lora_data->joy_left_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
             // Moving LEFT (0-117) → Slew CCW
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true, PWM_12_SLEW_CCW);
             PWM_SetDutyCycle(PWM_12_SLEW_CCW, pwm_value);
             PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
         }
         else if (lora_data->joy_left_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
             // Moving RIGHT (137-255) → Slew CW
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false, PWM_11_SLEW_CW);
             PWM_SetDutyCycle(PWM_11_SLEW_CW, pwm_value);
             PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
         }
@@ -118,22 +144,50 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         // --------------------------------------------------------------------
         // RIGHT STICK Y-AXIS: CYLINDER 2 (Stick)
         // --------------------------------------------------------------------
-        // joy_right_y: 127→0   = Cylinder 2 UP   (PWM_3) 0→100%
-        //              127→255 = Cylinder 2 DOWN (PWM_4) 0→100%
+        // Normal mode (joy_right_btn1 = 0):
+        //   joy_right_y: 127→0   = Cylinder 2 UP   (PWM_3) 0→100%
+        //                127→255 = Cylinder 2 DOWN (PWM_4) 0→100%
+        // Reversed mode (joy_right_btn1 = 1 / Cylinder 1 ON pressed):
+        //   joy_right_y: 127→0   = Cylinder 2 DOWN (PWM_4) 0→100%
+        //                127→255 = Cylinder 2 UP   (PWM_3) 0→100%
+
+        bool cylinder_2_reversed = (lora_data->joy_right_btn1 == 1);
 
         if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Stick DOWN (0-117) → Cylinder 2 UP
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true);
-            PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
-            PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+            // Stick DOWN (0-117)
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true,
+                                                 cylinder_2_reversed ? PWM_4_CYLINDER_2_IN : PWM_3_CYLINDER_2_OUT);
+            if (cylinder_2_reversed)
+            {
+                // Reversed: Stick DOWN → Cylinder 2 DOWN
+                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
+                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+            }
+            else
+            {
+                // Normal: Stick DOWN → Cylinder 2 UP
+                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
+                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+            }
         }
         else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Stick UP (137-255) → Cylinder 2 DOWN
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false);
-            PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
-            PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+            // Stick UP (137-255)
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false,
+                                                 cylinder_2_reversed ? PWM_3_CYLINDER_2_OUT : PWM_4_CYLINDER_2_IN);
+            if (cylinder_2_reversed)
+            {
+                // Reversed: Stick UP → Cylinder 2 UP
+                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
+                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+            }
+            else
+            {
+                // Normal: Stick UP → Cylinder 2 DOWN
+                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
+                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+            }
         }
         else
         {
@@ -151,14 +205,14 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         if (lora_data->joy_right_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
             // Stick LEFT (0-117) → Cylinder 4 DOWN
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true, PWM_7_CYLINDER_4_OUT);
             PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, pwm_value);
             PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
         }
         else if (lora_data->joy_right_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
             // Stick RIGHT (137-255) → Cylinder 4 UP
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false, PWM_8_CYLINDER_4_IN);
             PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, pwm_value);
             PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
         }
@@ -212,14 +266,14 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         if (lora_data->joy_left_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
             // Moving DOWN (0-117) → Track Left Backward
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, true);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, true, PWM_20_TRACK_LEFT_BACKWARD);
             PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, pwm_value);
             PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
         }
         else if (lora_data->joy_left_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
             // Moving UP (137-255) → Track Left Forward
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, false);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, false, PWM_19_TRACK_LEFT_FORWARD);
             PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, pwm_value);
             PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
         }
@@ -239,14 +293,14 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         if (lora_data->joy_left_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
             // Moving LEFT (0-117) → Outrigger Left Down
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true, PWM_14_OUTRIGGER_LEFT_DOWN);
             PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, pwm_value);
             PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
         }
         else if (lora_data->joy_left_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
             // Moving RIGHT (137-255) → Outrigger Left Up
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false, PWM_13_OUTRIGGER_LEFT_UP);
             PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, pwm_value);
             PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
         }
@@ -266,14 +320,14 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
             // Moving DOWN (0-117) → Track Right Backward
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_18_TRACK_RIGHT_BACKWARD);
             PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, pwm_value);
             PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
         }
         else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
             // Moving UP (137-255) → Track Right Forward
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false);
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_17_TRACK_RIGHT_FORWARD);
             PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, pwm_value);
             PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
         }
@@ -287,22 +341,22 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         // --------------------------------------------------------------------
         // RIGHT STICK X-AXIS: OUTRIGGER RIGHT
         // --------------------------------------------------------------------
-        // joy_right_x: 127→255 = Outrigger Right Up   (PWM_15) 0→100%
-        //              127→0   = Outrigger Right Down (PWM_16) 0→100%
+        // joy_right_x: 127→255 = Outrigger Right Down (PWM_16) 0→100%
+        //              127→0   = Outrigger Right Up   (PWM_15) 0→100%
 
         if (lora_data->joy_right_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Moving LEFT (0-117) → Outrigger Right Down
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true);
-            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, pwm_value);
-            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+            // Moving LEFT (0-117) → Outrigger Right Up
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true, PWM_15_OUTRIGGER_RIGHT_UP);
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, pwm_value);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
         }
         else if (lora_data->joy_right_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Moving RIGHT (137-255) → Outrigger Right Up
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false);
-            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, pwm_value);
-            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
+            // Moving RIGHT (137-255) → Outrigger Right Down
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false, PWM_16_OUTRIGGER_RIGHT_DOWN);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, pwm_value);
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
         }
         else
         {
@@ -370,12 +424,13 @@ void Control_EmergencyStop(void)
 }
 
 /**
-  * @brief  Map joystick value (0-255) to PWM duty cycle with limiting
+  * @brief  Map joystick value (0-255) to PWM duty cycle with per-channel limiting
   * @param  joystick_value: Raw joystick value (0-255)
   * @param  inverse: true = map 0-127 to 0-100%, false = map 127-255 to 0-100%
-  * @retval PWM duty cycle percentage (40-80% when active, 0% when stopped)
+  * @param  channel: PWM channel to get min/max limits for
+  * @retval PWM duty cycle percentage (min-max% when active, 0% when stopped)
   */
-static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse)
+static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channel_t channel)
 {
     uint8_t pwm_value = 0;
 
@@ -399,12 +454,16 @@ static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse)
     // Clamp to 0-100%
     if (pwm_value > 100) pwm_value = 100;
 
-    // Apply PWM limiting: 0% stays 0%, 1-100% maps to 40-80%
+    // Apply PWM limiting: 0% stays 0%, 1-100% maps to channel's min-max
     if (pwm_value > 0)
     {
-        // Scale from 0-100% to PWM_MIN-PWM_MAX (40-80%)
+        // Get limits for this specific channel
+        uint8_t pwm_min = pwm_limits[channel].min;
+        uint8_t pwm_max = pwm_limits[channel].max;
+
+        // Scale from 0-100% to pwm_min-pwm_max
         // Formula: output = min + (input * (max - min) / 100)
-        pwm_value = PWM_MIN + ((pwm_value * (PWM_MAX - PWM_MIN)) / 100);
+        pwm_value = pwm_min + ((pwm_value * (pwm_max - pwm_min)) / 100);
     }
 
     return pwm_value;

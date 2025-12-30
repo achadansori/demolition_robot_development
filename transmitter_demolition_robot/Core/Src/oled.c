@@ -812,9 +812,9 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         uint8_t ol_up = (left_x > 127) ? ((left_x - 127) * 100) / 128 : 0;
         uint8_t ol_dn = (left_x < 127) ? ((127 - left_x) * 100) / 127 : 0;
 
-        // OUT RIGHT: right_x < 127 = Down, right_x > 127 = Up
-        uint8_t or_up = (right_x > 127) ? ((right_x - 127) * 100) / 128 : 0;
-        uint8_t or_dn = (right_x < 127) ? ((127 - right_x) * 100) / 127 : 0;
+        // OUT RIGHT: right_x < 127 = Up, right_x > 127 = Down
+        uint8_t or_up = (right_x < 127) ? ((127 - right_x) * 100) / 127 : 0;
+        uint8_t or_dn = (right_x > 127) ? ((right_x - 127) * 100) / 128 : 0;
 
         // Display format
         OLED_SetCursor(0, 16);
