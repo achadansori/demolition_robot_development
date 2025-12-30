@@ -21,7 +21,7 @@
 //   500Hz (2ms)   - Fast, responsive control
 //   1000Hz (1ms)  - Very fast, maximum precision (may cause sticking at low duty)
 // ============================================================================
-#define PWM_FREQUENCY_HZ    300     // <- CHANGE THIS VALUE (50-1000 Hz recommended)
+#define PWM_FREQUENCY_HZ    1000    // <- OPTIMIZED for fast solenoid response (was 300Hz)
 
 // ============================================================================
 // AUTO-CALCULATED VALUES (DO NOT MODIFY BELOW THIS LINE)
