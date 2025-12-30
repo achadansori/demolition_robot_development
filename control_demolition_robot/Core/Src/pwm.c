@@ -14,14 +14,16 @@
 // ============================================================================
 // PWM FREQUENCY CONFIGURATION - CHANGE THIS VALUE TO ADJUST SOLENOID RESPONSE
 // ============================================================================
-// Recommended values:
-//   50Hz  (20ms)  - Very slow, maximum solenoid settling time (for very sticky valves)
-//   100Hz (10ms)  - Slow, good for preventing sticking (CURRENT SETTING)
+// Recommended values for TIP122 Darlington transistor:
+//   50Hz  (20ms)  - Very slow, maximum solenoid settling time
+//   100Hz (10ms)  - Slow, good for preventing sticking
 //   200Hz (5ms)   - Medium, balanced performance
-//   500Hz (2ms)   - Fast, responsive control
-//   1000Hz (1ms)  - Very fast, maximum precision (may cause sticking at low duty)
+//   500Hz (2ms)   - Fast & SAFE for TIP122 (RECOMMENDED) ⭐
+//   1000Hz (1ms)  - Very fast, safe for TIP122 but more heat
+//   2000Hz+       - Too fast, TIP122 may overheat! ⚠️
+// Note: TIP122 max safe frequency ~5-10kHz, but 500Hz-1kHz optimal for efficiency
 // ============================================================================
-#define PWM_FREQUENCY_HZ    1000    // <- OPTIMIZED for fast solenoid response (was 300Hz)
+#define PWM_FREQUENCY_HZ    500    // <- OPTIMIZED for TIP122: Fast response + Safe switching
 
 // ============================================================================
 // AUTO-CALCULATED VALUES (DO NOT MODIFY BELOW THIS LINE)
