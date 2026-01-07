@@ -111,17 +111,20 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   // ========================================================================
-  // SAFETY FEATURE: Communication Timeout Watchdog
+  // SAFETY FEATURE: Communication Timeout Watchdog with Noise Filter
   // ========================================================================
   // If no data received from transmitter for COMM_TIMEOUT_MS,
   // smoothly transition all PWM outputs to 0 to prevent runaway robot!
+  // Noise filter: Requires TIMEOUT_NOISE_FILTER consecutive failures before triggering
   #define COMM_TIMEOUT_MS         500     // 500ms timeout (10 missed packets @ 50ms rate)
   #define SAFETY_TRANSITION_STEPS 20      // 20 steps for smooth transition to 0
+  #define TIMEOUT_NOISE_FILTER    5       // Require 5 consecutive timeouts before safety mode
 
   uint32_t last_data_received_time = 0;   // Timestamp of last valid LoRa packet
   uint8_t safety_mode_active = 0;         // 1 = timeout detected, transitioning to safe state
   uint8_t safety_transition_step = 0;     // Current step in smooth transition (0-20)
   uint8_t pwm_backup[PWM_CHANNEL_COUNT];  // Backup of PWM values before safety transition
+  uint8_t timeout_noise_counter = 0;      // Count consecutive timeouts for noise filtering
 
   // Initialize M0 and M1 pins for LoRa configuration
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -223,6 +226,9 @@ int main(void)
         // Update timestamp - we received valid data!
         last_data_received_time = current_time;
 
+        // Reset timeout noise counter - valid data received
+        timeout_noise_counter = 0;
+
         // If recovering from safety mode, restore normal operation
         if (safety_mode_active)
         {
@@ -232,62 +238,34 @@ int main(void)
 
           // EXIT SLEEP MODE: Set PB8 to LOW (normal mode)
           GPIOB->BSRR = (1<<(8+16));  // BR8 = reset PB8 to LOW
-
-          // Send recovery message to USB
-          char *recovery_msg = "\r\n*** COMM RESTORED! Resuming normal operation ***\r\n";
-          CDC_Transmit_FS((uint8_t*)recovery_msg, strlen(recovery_msg));
         }
 
         // Update control outputs based on received data (normal operation)
         Control_Update(&lora_data);
-
-        // Print to USB less frequently to avoid blocking
-        // USB CDC_Transmit is SLOW and can cause delay if called too often
-        static uint8_t usb_counter = 0;
-        if (++usb_counter >= 10)  // Print USB every 10 packets (500ms) to minimize blocking
-        {
-          usb_counter = 0;
-
-          // Format human-readable string (matching transmitter format)
-          char output_buffer[200];
-          int len = snprintf(output_buffer, sizeof(output_buffer),
-                             "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%d,R1=%d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
-                             lora_data.joy_left_x,
-                             lora_data.joy_left_y,
-                             lora_data.joy_left_btn1,
-                             lora_data.joy_left_btn2,
-                             lora_data.joy_right_x,
-                             lora_data.joy_right_y,
-                             lora_data.joy_right_btn1,
-                             lora_data.joy_right_btn2,
-                             lora_data.r8,
-                             lora_data.r1,
-                             lora_data.s0,
-                             lora_data.s1_1,
-                             lora_data.s1_2,
-                             lora_data.s2_1,
-                             lora_data.s2_2,
-                             lora_data.s4_1,
-                             lora_data.s4_2,
-                             lora_data.s5_1,
-                             lora_data.s5_2);
-
-          // Forward to USB CDC (print every 10th packet to minimize blocking delay)
-          CDC_Transmit_FS((uint8_t*)output_buffer, len);
-        }
-        // Data is still received every 50ms via LoRa realtime - just not printed every time
       }
+    }
+    else
+    {
+      // No timeout - reset counter
+      timeout_noise_counter = 0;
     }
 
     // ========================================================================
-    // SAFETY TIMEOUT: Smooth transition to 0 if no data received
+    // SAFETY TIMEOUT: Smooth transition to 0 if no data received (with noise filter)
     // ========================================================================
-    else if (time_since_last_data > COMM_TIMEOUT_MS)
+    if (time_since_last_data > COMM_TIMEOUT_MS)
     {
       // TIMEOUT DETECTED! No data received for more than 500ms
-      // Smoothly transition all PWM outputs to 0 to prevent runaway robot
+      // Use noise filter to prevent false triggers from single packet loss
 
-      if (!safety_mode_active)
+      // Increment timeout counter
+      if (timeout_noise_counter < TIMEOUT_NOISE_FILTER)
+      {
+        timeout_noise_counter++;
+      }
+
+      // Only enter safety mode if we've had TIMEOUT_NOISE_FILTER consecutive timeouts
+      if (timeout_noise_counter >= TIMEOUT_NOISE_FILTER && !safety_mode_active)
       {
         // First time entering safety mode - backup current PWM values
         safety_mode_active = 1;
@@ -301,11 +279,14 @@ int main(void)
         // ENTER SLEEP MODE: Set PB8 to HIGH, PE6 to LOW
         GPIOB->BSRR = (1<<8);       // BS8 = set PB8 to HIGH
         GPIOE->BSRR = (1<<(6+16));  // BR6 = reset PE6 to LOW
-
-        // Send warning message to USB
-        char *warning_msg = "\r\n*** COMM TIMEOUT! Entering sleep mode ***\r\n";
-        CDC_Transmit_FS((uint8_t*)warning_msg, strlen(warning_msg));
       }
+    }
+
+    // ========================================================================
+    // SAFETY TRANSITION: Continue smooth transition if in safety mode
+    // ========================================================================
+    if (safety_mode_active)
+    {
 
       // Smooth transition: Gradually reduce all PWM to 0 over 20 steps
       // Each step runs every 10ms (in main loop), total transition = 200ms
@@ -334,38 +315,6 @@ int main(void)
           PWM_StopAll();
         }
       }
-    }
-
-    // ========================================================================
-    // Send PWM data via USB CDC for monitoring
-    // Send every 100ms (10Hz) - independent of LoRa packet rate
-    // ========================================================================
-    static uint32_t last_pwm_send = 0;
-    if (HAL_GetTick() - last_pwm_send >= 100)
-    {
-      last_pwm_send = HAL_GetTick();
-
-      // Create binary packet: Header(2) + PWM Data(20) + Checksum(1) = 23 bytes
-      uint8_t pwm_packet[23];
-      pwm_packet[0] = 0xAA;  // Header byte 1
-      pwm_packet[1] = 0x55;  // Header byte 2
-
-      // Get all 20 PWM duty cycle values (0-100%)
-      for (uint8_t i = 0; i < 20; i++)
-      {
-        pwm_packet[2 + i] = PWM_GetDutyCycle((PWM_Channel_t)i);
-      }
-
-      // Calculate XOR checksum of PWM data bytes
-      uint8_t checksum = 0;
-      for (uint8_t i = 2; i < 22; i++)
-      {
-        checksum ^= pwm_packet[i];
-      }
-      pwm_packet[22] = checksum;
-
-      // Send packet via USB CDC
-      CDC_Transmit_FS(pwm_packet, 23);
     }
 
     // No delay here - process LoRa data immediately without blocking

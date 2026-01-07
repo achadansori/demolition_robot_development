@@ -18,6 +18,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "joystick.h"
+#include "battery.h"
 #include "main.h"
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,6 +43,9 @@ void Joystick_Init(void)
 {
     // ADC sudah diinisialisasi di MX_ADC1_Init()
     // STM32F4 tidak memerlukan kalibrasi ADC (hanya STM32F3/L4)
+
+    // Initialize battery module (R1 now used for battery voltage)
+    Battery_Init();
 }
 
 /**
@@ -103,11 +107,11 @@ void Joystick_Read(Joystick_Data_t* data)
     adc_value = Joystick_ReadChannel(ADC_CHANNEL_7);
     data->right_x = (uint8_t)(adc_value >> 4);
 
-    // Read R1 Potentiometer (PA0 - ADC_CHANNEL_0) - SWAPPED WITH R8
+    // Read R8 Potentiometer (PA0 - ADC_CHANNEL_0)
     adc_value = Joystick_ReadChannel(ADC_CHANNEL_0);
-    data->r1 = (uint8_t)(adc_value >> 4);
-
-    // Read R8 Potentiometer (PA1 - ADC_CHANNEL_1) - SWAPPED WITH R1
-    adc_value = Joystick_ReadChannel(ADC_CHANNEL_1);
     data->r8 = (uint8_t)(adc_value >> 4);
+
+    // Read Battery Voltage (PA1 - ADC_CHANNEL_1)
+    // R1 pin now used for battery voltage monitoring (0-100%)
+    data->battery_percent = Battery_GetPercentage();
 }

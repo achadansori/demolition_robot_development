@@ -114,7 +114,7 @@ const char* Var_GetCSVString(void)
              tx_data.switches.s4_2,
              tx_data.switches.s5_1,
              tx_data.switches.s5_2,
-             tx_data.joystick.r1,
+             tx_data.joystick.battery_percent,
              tx_data.joystick.r8);
 
     return csv_buffer;

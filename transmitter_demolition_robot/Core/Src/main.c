@@ -33,6 +33,7 @@
 #include "usb.h"
 #include "lora.h"
 #include "oled.h"
+#include "battery.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -442,10 +443,8 @@ int main(void)
         OLED_Update();
     }
 
-    // Delay 20ms for faster response (50Hz update rate)
-    // Higher update rate = more responsive control
-    // Note: LoRa transmission is still bottleneck (~200-400ms)
-    HAL_Delay(20);
+
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }

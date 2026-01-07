@@ -97,7 +97,7 @@ void USB_PrintData(Transmitter_Data_t* data)
 
     // Single line format - easy to read, no screen corruption
     len = snprintf(usb_buffer, USB_TX_BUFFER_SIZE,
-        "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%03d,R1=%03d SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
+        "JL:%03d,%03d,%d,%d JR:%03d,%03d,%d,%d POT:R8=%03d BAT=%03d%% SW:S0=%d,S1=%d%d,S2=%d%d,S4=%d%d,S5=%d%d\r\n",
         data->joystick.left_x,
         data->joystick.left_y,
         data->switches.joy_left_btn1,
@@ -107,7 +107,7 @@ void USB_PrintData(Transmitter_Data_t* data)
         data->switches.joy_right_btn1,
         data->switches.joy_right_btn2,
         data->joystick.r8,
-        data->joystick.r1,
+        data->joystick.battery_percent,
         data->switches.s0,
         data->switches.s1_1, data->switches.s1_2,
         data->switches.s2_1, data->switches.s2_2,

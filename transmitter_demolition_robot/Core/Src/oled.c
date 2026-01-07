@@ -586,19 +586,61 @@ void OLED_ShowSplashScreen(void)
     OLED_Clear();
     OLED_DrawBitmap(logo_aldzama);
     OLED_Update();
-    HAL_Delay(2000);
+    HAL_Delay(1000);
 
     // Screen 2:
     OLED_Clear();
     OLED_DrawBitmap(semangat);
     OLED_Update();
-    HAL_Delay(1000);
+    HAL_Delay(500);
 
     // Screen 3:
     OLED_Clear();
     OLED_DrawBitmap(safety);
     OLED_Update();
-    HAL_Delay(1000);
+    HAL_Delay(500);
+}
+
+/**
+  * @brief  Draw battery bar (without percentage text)
+  * @param  x: X coordinate (top-left corner)
+  * @param  y: Y coordinate (top-left corner)
+  * @param  battery_percent: Battery percentage (0-100%)
+  * @retval None
+  *
+  * Battery icon format (bar only):
+  * [========]  (Full)
+  * [=====   ]  (Medium)
+  * [==      ]  (Low)
+  * [        ]  (Critical - Empty)
+  */
+void OLED_DrawBatteryBar(uint8_t x, uint8_t y, uint8_t battery_percent)
+{
+    // Clamp battery percentage to 0-100
+    if (battery_percent > 100)
+    {
+        battery_percent = 100;
+    }
+
+    // Battery icon dimensions - larger since no percentage text
+    uint8_t battery_width = 50;    // Inner battery bar width (increased from 30)
+    uint8_t battery_height = 6;    // Battery height
+    uint8_t battery_nub = 2;       // Battery positive terminal width
+
+    // Draw battery outline (main body)
+    OLED_DrawRect(x, y, battery_width + 2, battery_height + 2);
+
+    // Draw battery positive terminal (nub on right side)
+    OLED_FillRect(x + battery_width + 2, y + 2, battery_nub, battery_height - 2);
+
+    // Calculate fill width based on percentage
+    uint8_t fill_width = (battery_percent * battery_width) / 100;
+
+    // Draw filled portion (battery level)
+    if (fill_width > 0)
+    {
+        OLED_FillRect(x + 1, y + 1, fill_width, battery_height);
+    }
 }
 
 /**
@@ -616,11 +658,20 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 {
     OLED_Clear();
 
-    // Title
-    OLED_SetCursor(10, 0);
-    OLED_WriteString("DEMOLITION ROBOT", FONT_SIZE_NORMAL);
+    // Extract battery percentage from joystick_data (index 5)
+    uint8_t battery_percent = joystick_data[5];
 
-    // Draw separator line
+    // ========================================================================
+    // TOP BAR: Battery indicator
+    // ========================================================================
+    // Draw battery bar at top-right (centered vertically at y=1)
+    OLED_DrawBatteryBar(72, 1, battery_percent);
+
+    // Title - smaller font to fit with battery
+    OLED_SetCursor(0, 1);
+    OLED_WriteString("DEMOLITION", FONT_SIZE_SMALL);
+
+    // Draw separator line below battery bar
     for (uint8_t i = 0; i < OLED_WIDTH; i++)
     {
         OLED_DrawPixel(i, 10, true);
@@ -631,12 +682,12 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
     // ========================================================================
     if (sleep_mode)
     {
-        // Draw warning box
-        OLED_DrawRect(5, 18, 118, 40);
-        OLED_DrawRect(6, 19, 116, 38);  // Double border for emphasis
+        // Draw warning box (adjusted Y position after top bar)
+        OLED_DrawRect(5, 14, 118, 44);
+        OLED_DrawRect(6, 15, 116, 42);  // Double border for emphasis
 
         // Display SLEEP MODE status
-        OLED_SetCursor(18, 24);
+        OLED_SetCursor(18, 20);
         OLED_WriteString("** SLEEP MODE **", FONT_SIZE_NORMAL);
 
         if (safety_ok)
@@ -664,7 +715,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
                 OLED_WriteString("Controls Centered", FONT_SIZE_NORMAL);
 
                 OLED_SetCursor(15, 48);
-                OLED_WriteString("Hold S2_1 UP", FONT_SIZE_NORMAL);
+                OLED_WriteString("Hold S2 UP", FONT_SIZE_NORMAL);
             }
         }
         else
@@ -689,11 +740,11 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
     if (!motor_active)
     {
         // Motor is not active yet - show S1 hold instructions/progress
-        // Draw info box
-        OLED_DrawRect(5, 18, 118, 40);
+        // Draw info box (adjusted Y position after top bar)
+        OLED_DrawRect(5, 14, 118, 44);
 
         // Display title
-        OLED_SetCursor(15, 24);
+        OLED_SetCursor(15, 20);
         OLED_WriteString("MOTOR READY", FONT_SIZE_NORMAL);
 
         if (hold_progress > 0)
@@ -715,7 +766,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         {
             // Ready to hold S1_1 - show instruction
             OLED_SetCursor(8, 36);
-            OLED_WriteString("Hold S1_1 UP", FONT_SIZE_NORMAL);
+            OLED_WriteString("Hold S1 UP", FONT_SIZE_NORMAL);
 
             OLED_SetCursor(8, 48);
             OLED_WriteString("to start motor", FONT_SIZE_NORMAL);
@@ -739,7 +790,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         // Mode UPPER - Excavator
         mode_name = "MODE: UPPER";
 
-        OLED_SetCursor(20, 8);
+        OLED_SetCursor(20, 12);
         OLED_WriteString((char*)mode_name, FONT_SIZE_SMALL);
 
         // Calculate UP/DOWN percentages for all cylinders
@@ -762,19 +813,19 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         uint8_t slew_cw = (left_x > 127) ? ((left_x - 127) * 100) / 128 : 0;
 
         // Display format: "CYL X UP=XX% DOWN=XX%"
-        OLED_SetCursor(0, 16);
+        OLED_SetCursor(0, 20);
         snprintf(line_buffer, sizeof(line_buffer), "CYL2 UP=%d%% DOWN=%d%%", c2_up, c2_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 24);
+        OLED_SetCursor(0, 28);
         snprintf(line_buffer, sizeof(line_buffer), "CYL3 UP=%d%% DOWN=%d%%", c3_up, c3_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 32);
+        OLED_SetCursor(0, 36);
         snprintf(line_buffer, sizeof(line_buffer), "CYL4 UP=%d%% DOWN=%d%%", c4_up, c4_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 40);
+        OLED_SetCursor(0, 44);
         snprintf(line_buffer, sizeof(line_buffer), "SLEW CCW=%d%% CW=%d%%", slew_ccw, slew_cw);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
@@ -783,12 +834,12 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         // Mode DUAL - Reserved
         mode_name = "MODE: DUAL";
 
-        OLED_SetCursor(25, 14);
+        OLED_SetCursor(25, 20);
         OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
 
-        OLED_SetCursor(20, 32);
+        OLED_SetCursor(20, 36);
         OLED_WriteString("Reserved for", FONT_SIZE_NORMAL);
-        OLED_SetCursor(25, 44);
+        OLED_SetCursor(25, 48);
         OLED_WriteString("Future Use", FONT_SIZE_NORMAL);
     }
     else if (s5_1 == 0 && s5_2 == 1)
@@ -796,7 +847,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         // Mode LOWER - Mobility
         mode_name = "MODE: LOWER";
 
-        OLED_SetCursor(20, 8);
+        OLED_SetCursor(20, 12);
         OLED_WriteString((char*)mode_name, FONT_SIZE_SMALL);
 
         // Calculate Forward/Backward and Up/Down percentages
@@ -817,19 +868,19 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         uint8_t or_dn = (right_x > 127) ? ((right_x - 127) * 100) / 128 : 0;
 
         // Display format
-        OLED_SetCursor(0, 16);
+        OLED_SetCursor(0, 20);
         snprintf(line_buffer, sizeof(line_buffer), "TRK L F=%d%% B=%d%%", tl_fwd, tl_bwd);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 24);
+        OLED_SetCursor(0, 28);
         snprintf(line_buffer, sizeof(line_buffer), "TRK R F=%d%% B=%d%%", tr_fwd, tr_bwd);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 32);
+        OLED_SetCursor(0, 36);
         snprintf(line_buffer, sizeof(line_buffer), "OUT L UP=%d%% DOWN=%d%%", ol_up, ol_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(0, 40);
+        OLED_SetCursor(0, 44);
         snprintf(line_buffer, sizeof(line_buffer), "OUT R UP=%d%% DOWN=%d%%", or_up, or_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
@@ -838,12 +889,12 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         // Invalid mode
         mode_name = "MODE: INVALID";
 
-        OLED_SetCursor(15, 14);
+        OLED_SetCursor(15, 20);
         OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
 
-        OLED_SetCursor(15, 32);
+        OLED_SetCursor(15, 36);
         OLED_WriteString("Check Switch", FONT_SIZE_NORMAL);
-        OLED_SetCursor(10, 44);
+        OLED_SetCursor(10, 48);
         OLED_WriteString("Configuration", FONT_SIZE_NORMAL);
     }
 }

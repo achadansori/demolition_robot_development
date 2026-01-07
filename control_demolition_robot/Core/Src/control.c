@@ -13,7 +13,13 @@
 
 /* Private defines -----------------------------------------------------------*/
 #define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
-#define JOYSTICK_DEADZONE   10      // Deadzone around center to prevent drift
+#define JOYSTICK_DEADZONE   5       // Deadzone around center (reduced for wider range, smoother control)
+#define INVALID_MODE_NOISE_FILTER 5 // Require 5 consecutive invalid modes before emergency stop
+
+/* Smoothing parameters for solenoid control */
+#define PWM_RAMPING_ENABLED 1       // Enable PWM ramping for smooth transitions
+#define MAX_PWM_CHANGE_PER_CYCLE 10 // Max PWM change per cycle (% per 50ms) - lower = smoother but slower response
+#define SMOOTH_CURVE_ENABLED 1      // Enable non-linear curve for smooth start/stop
 
 /* Private variables ---------------------------------------------------------*/
 // PWM limits per output channel (min, max) - adjustable per solenoid
@@ -24,30 +30,39 @@ typedef struct {
 
 // PWM limits for each output - indexed by PWM channel enum
 static PWM_Limits_t pwm_limits[20] = {
-    [PWM_1_BRAKE]                    = {00, 80},  // Brake
-    [PWM_2_CYLINDER_1_ON]            = {00, 80},  // Cylinder 1 ON
-    [PWM_3_CYLINDER_2_OUT]           = {00, 80},  // Cylinder 2 OUT
-    [PWM_4_CYLINDER_2_IN]            = {00, 80},  // Cylinder 2 IN
-    [PWM_5_CYLINDER_3_OUT]           = {00, 80},  // Cylinder 3 OUT (Bucket)
-    [PWM_6_CYLINDER_3_IN]            = {00, 80},  // Cylinder 3 IN (Bucket)
-    [PWM_7_CYLINDER_4_OUT]           = {00, 80},  // Cylinder 4 OUT
-    [PWM_8_CYLINDER_4_IN]            = {00, 80},  // Cylinder 4 IN
-    [PWM_9_TOOL_1]                   = {00, 80},  // Tool 1 (Reserved)
-    [PWM_10_TOOL_2]                  = {00, 80},  // Tool 2 (Reserved)
-    [PWM_11_SLEW_CW]                 = {00, 80},  // Slew CW
-    [PWM_12_SLEW_CCW]                = {00, 80},  // Slew CCW
+    [PWM_1_BRAKE]                    = {00, 70},  // Brake
+    [PWM_2_CYLINDER_1_ON]            = {00, 70},  // Cylinder 1 ON
+    [PWM_3_CYLINDER_2_OUT]           = {00, 70},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {00, 70},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {00, 70},  // Cylinder 3 OUT (Bucket)
+    [PWM_6_CYLINDER_3_IN]            = {00, 70},  // Cylinder 3 IN (Bucket)
+    [PWM_7_CYLINDER_4_OUT]           = {00, 70},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {00, 70},  // Cylinder 4 IN
+    [PWM_9_TOOL_1]                   = {00, 70},  // Tool 1 (Reserved)
+    [PWM_10_TOOL_2]                  = {00, 70},  // Tool 2 (Reserved)
+    [PWM_11_SLEW_CW]                 = {00, 70},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {00, 70},  // Slew CCW
     [PWM_13_OUTRIGGER_LEFT_UP]       = {00, 100},  // Outrigger Left UP
     [PWM_14_OUTRIGGER_LEFT_DOWN]     = {00, 100},  // Outrigger Left DOWN
     [PWM_15_OUTRIGGER_RIGHT_UP]      = {00, 100},  // Outrigger Right UP
     [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {00, 100},  // Outrigger Right DOWN
-    [PWM_17_TRACK_RIGHT_FORWARD]     = {00, 80},  // Track Right FORWARD
-    [PWM_18_TRACK_RIGHT_BACKWARD]    = {00, 80},  // Track Right BACKWARD
-    [PWM_19_TRACK_LEFT_FORWARD]      = {00, 80},  // Track Left FORWARD
-    [PWM_20_TRACK_LEFT_BACKWARD]     = {00, 80},  // Track Left BACKWARD
+    [PWM_17_TRACK_RIGHT_FORWARD]     = {00, 70},  // Track Right FORWARD
+    [PWM_18_TRACK_RIGHT_BACKWARD]    = {00, 70},  // Track Right BACKWARD
+    [PWM_19_TRACK_LEFT_FORWARD]      = {00, 70},  // Track Left FORWARD
+    [PWM_20_TRACK_LEFT_BACKWARD]     = {00, 70},  // Track Left BACKWARD
 };
+
+/* Private variables - noise filters -----------------------------------------*/
+static uint8_t invalid_mode_counter = 0;  // Count consecutive invalid modes
+
+/* Private variables - PWM smoothing -----------------------------------------*/
+#if PWM_RAMPING_ENABLED
+static uint8_t prev_pwm_target[20] = {0};  // Previous PWM target values for ramping
+#endif
 
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channel_t channel);
+static uint8_t ApplySmoothing(uint8_t new_pwm, PWM_Channel_t channel);
 
 /**
   * @brief  Initialize control system
@@ -87,6 +102,8 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     // ========================================================================
     if (mode_upper)
     {
+        // Valid mode detected - reset invalid mode counter
+        invalid_mode_counter = 0;
         // --------------------------------------------------------------------
         // LEFT STICK Y-AXIS: CYLINDER 3 (Bucket)
         // --------------------------------------------------------------------
@@ -257,6 +274,8 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     // ========================================================================
     else if (mode_lower)
     {
+        // Valid mode detected - reset invalid mode counter
+        invalid_mode_counter = 0;
         // --------------------------------------------------------------------
         // LEFT STICK Y-AXIS: TRACK LEFT
         // --------------------------------------------------------------------
@@ -383,17 +402,39 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     {
         // TODO: Implement dual mode in the future
         // This mode will combine both excavator and mobility controls
-        // Stop all outputs for now
-        Control_EmergencyStop();
+        // For now, treat as invalid mode and use noise filter
+
+        // Increment invalid mode counter
+        if (invalid_mode_counter < INVALID_MODE_NOISE_FILTER)
+        {
+            invalid_mode_counter++;
+        }
+
+        // Only stop if we've had INVALID_MODE_NOISE_FILTER consecutive invalid modes
+        if (invalid_mode_counter >= INVALID_MODE_NOISE_FILTER)
+        {
+            Control_EmergencyStop();
+        }
     }
 
     // ========================================================================
-    // INVALID MODE - EMERGENCY STOP
+    // INVALID MODE - EMERGENCY STOP (with noise filter)
     // ========================================================================
     else
     {
-        // Unknown mode combination - stop all outputs for safety
-        Control_EmergencyStop();
+        // Unknown mode combination - use noise filter before emergency stop
+
+        // Increment invalid mode counter
+        if (invalid_mode_counter < INVALID_MODE_NOISE_FILTER)
+        {
+            invalid_mode_counter++;
+        }
+
+        // Only stop if we've had INVALID_MODE_NOISE_FILTER consecutive invalid modes
+        if (invalid_mode_counter >= INVALID_MODE_NOISE_FILTER)
+        {
+            Control_EmergencyStop();
+        }
     }
 
     // ========================================================================
@@ -421,6 +462,66 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
 void Control_EmergencyStop(void)
 {
     PWM_StopAll();  // This will set all PWM channels to 0%
+}
+
+/**
+  * @brief  Apply smooth curve to PWM value for gradual start/stop
+  * @param  pwm_value: Linear PWM value (0-100%)
+  * @retval Smoothed PWM value (0-100%)
+  */
+static uint8_t ApplySmoothCurve(uint8_t pwm_value)
+{
+#if SMOOTH_CURVE_ENABLED
+    if (pwm_value == 0) return 0;
+
+    // Apply exponential curve for smooth start
+    // Formula: output = input^1.5 for smooth acceleration
+    // Using integer math: pwm * sqrt(pwm) / 10
+    uint16_t temp = pwm_value * pwm_value;  // pwm^2
+    temp = temp / 100;                       // Normalize
+
+    // Approximate sqrt using lookup or linear interpolation
+    // For simplicity, use quadratic curve: pwm^2 / 100
+    uint8_t result = (uint8_t)temp;
+
+    return result;
+#else
+    return pwm_value;
+#endif
+}
+
+/**
+  * @brief  Apply PWM ramping for smooth transitions
+  * @param  new_pwm: Target PWM value
+  * @param  channel: PWM channel
+  * @retval Ramped PWM value (limited rate of change)
+  */
+static uint8_t ApplySmoothing(uint8_t new_pwm, PWM_Channel_t channel)
+{
+#if PWM_RAMPING_ENABLED
+    uint8_t prev_pwm = prev_pwm_target[channel];
+    uint8_t ramped_pwm = new_pwm;
+
+    // Calculate difference
+    int16_t diff = (int16_t)new_pwm - (int16_t)prev_pwm;
+
+    // Apply rate limiting
+    if (diff > MAX_PWM_CHANGE_PER_CYCLE)
+    {
+        ramped_pwm = prev_pwm + MAX_PWM_CHANGE_PER_CYCLE;
+    }
+    else if (diff < -MAX_PWM_CHANGE_PER_CYCLE)
+    {
+        ramped_pwm = prev_pwm - MAX_PWM_CHANGE_PER_CYCLE;
+    }
+
+    // Store for next cycle
+    prev_pwm_target[channel] = ramped_pwm;
+
+    return ramped_pwm;
+#else
+    return new_pwm;
+#endif
 }
 
 /**
@@ -454,6 +555,9 @@ static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channe
     // Clamp to 0-100%
     if (pwm_value > 100) pwm_value = 100;
 
+    // Apply smooth curve for gradual start/stop
+    pwm_value = ApplySmoothCurve(pwm_value);
+
     // Apply PWM limiting: 0% stays 0%, 1-100% maps to channel's min-max
     if (pwm_value > 0)
     {
@@ -465,6 +569,9 @@ static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channe
         // Formula: output = min + (input * (max - min) / 100)
         pwm_value = pwm_min + ((pwm_value * (pwm_max - pwm_min)) / 100);
     }
+
+    // Apply ramping for smooth transitions
+    pwm_value = ApplySmoothing(pwm_value, channel);
 
     return pwm_value;
 }

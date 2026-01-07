@@ -31,12 +31,12 @@ extern "C" {
  * Menggunakan 8-bit per axis untuk efisiensi (0-255)
  */
 typedef struct {
-    uint8_t left_x;      // Joystick kiri sumbu X (0-255)
-    uint8_t left_y;      // Joystick kiri sumbu Y (0-255)
-    uint8_t right_x;     // Joystick kanan sumbu X (0-255)
-    uint8_t right_y;     // Joystick kanan sumbu Y (0-255)
-    uint8_t r8;          // Potentiometer R8 (0-255)
-    uint8_t r1;          // Potentiometer R1 (0-255)
+    uint8_t left_x;          // Joystick kiri sumbu X (0-255)
+    uint8_t left_y;          // Joystick kiri sumbu Y (0-255)
+    uint8_t right_x;         // Joystick kanan sumbu X (0-255)
+    uint8_t right_y;         // Joystick kanan sumbu Y (0-255)
+    uint8_t r8;              // Potentiometer R8 (0-255)
+    uint8_t battery_percent; // Battery percentage (0-100%)
 } __attribute__((packed)) Joystick_Data_t;
 
 /**
