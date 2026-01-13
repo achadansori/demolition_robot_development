@@ -162,11 +162,12 @@ int main(void)
   HAL_Delay(50);
 
   // ========================================================================
-  // WAIT FOR S0 = 1 BEFORE SYSTEM START (Power-on interrupt check)
+  // WAIT FOR S0 = 1 BEFORE SYSTEM START (Emergency safety check)
   // ========================================================================
-  // System will NOT start until S0 switch is ON (S0 = 1)
-  // This ensures operator has control from power-on
-  USB_Print("Waiting for S0 switch ON...\r\n");
+  // System will NOT start until S0 switch is in NORMAL position (S0 = 1)
+  // This prevents starting system in EMERGENCY mode (S0 = 0)
+  // Ensures safe startup with emergency relay (PB8) in non-active state
+  USB_Print("Waiting for S0 switch in NORMAL position (not emergency)...\r\n");
 
   while (1)
   {
@@ -174,12 +175,12 @@ int main(void)
 
       if (tx_data.switches.s0 == 1)
       {
-          // S0 is ON - system can start!
-          USB_Print("S0 switch detected ON - Starting system...\r\n");
+          // S0 is in NORMAL position - safe to start system!
+          USB_Print("S0 in NORMAL mode - Starting system...\r\n");
           break;  // Exit wait loop
       }
 
-      // S0 still OFF - keep waiting
+      // S0 still in EMERGENCY position - keep waiting
       HAL_Delay(100);
   }
 
@@ -206,41 +207,47 @@ int main(void)
     Var_Update();
 
     // ========================================================================
-    // S0 SYSTEM ON/OFF SWITCH - Master control for entire system
+    // S0 EMERGENCY SWITCH - Controls emergency relay (PB8) on robot
     // ========================================================================
-    // S0 = 0: System OFF (power down, OLED off, no operation)
-    // S0 = 1: System ON (normal operation)
+    // S0 = 0: EMERGENCY MODE (transmit s0=0 → PB8 LOW → emergency relay aktif)
+    // S0 = 1: NORMAL MODE (transmit s0=1 → PB8 HIGH → emergency relay non-aktif)
 
     if (tx_data.switches.s0 == 0)
     {
         // ====================================================================
-        // S0 = 0 - SYSTEM OFF (like power off or interrupt disable)
+        // S0 = 0 - EMERGENCY MODE
         // ====================================================================
+        // Transmit s0 = 0 to trigger emergency relay (PB8 LOW) on robot
+
         // Turn off OLED to save battery
         OLED_Clear();
         OLED_Update();
 
+        // Override all controls to SAFE values for emergency
+        tx_data.joystick.left_x  = 127;
+        tx_data.joystick.left_y  = 127;
+        tx_data.joystick.right_x = 127;
+        tx_data.joystick.right_y = 127;
+
+        // All switches to 0 (except s0 which remains 0 for emergency signal)
+        tx_data.switches.joy_left_btn1  = 0;
+        tx_data.switches.joy_left_btn2  = 0;
+        tx_data.switches.joy_right_btn1 = 0;
+        tx_data.switches.joy_right_btn2 = 0;
+        tx_data.switches.s1_1 = 0;
+        tx_data.switches.s1_2 = 0;
+        tx_data.switches.s2_1 = 0;
+        tx_data.switches.s2_2 = 0;
+        tx_data.switches.s4_1 = 0;
+        tx_data.switches.s4_2 = 0;
+        tx_data.switches.s5_1 = 0;
+        tx_data.switches.s5_2 = 0;
+        tx_data.switches.motor_active = 0;
+
         // Remember S0 was OFF
         last_s0_state = 0;
 
-        // Skip all system logic - system is OFF
-        HAL_Delay(100);
-        continue;  // Jump back to while(1), skip everything below
-    }
-
-    // ========================================================================
-    // S0 = 1 - SYSTEM ON
-    // ========================================================================
-    // Check if S0 just transitioned from 0→1 (system startup/restart)
-    if (last_s0_state == 0)
-    {
-        // System just turned ON! Show splash screen (initialization)
-        USB_Print("S0 switched ON - System restart\r\n");
-        OLED_ShowSplashScreen();
-        HAL_Delay(1000);  // Display splash for 1 second
-        last_s0_state = 1;
-
-        // Reset all system variables (fresh start)
+        // Reset all system variables (emergency state)
         sleep_mode_active = 1;
         sleep_transition_steps = 0;
         safety_check_passed = 0;
@@ -248,7 +255,32 @@ int main(void)
         s1_1_hold_counter = 0;
         motor_active = 0;
 
-        USB_Print("System restarted - Entering SLEEP mode\r\n");
+        // IMPORTANT: Continue to transmit s0 = 0 (DO NOT skip transmission!)
+    }
+    else
+    {
+        // ====================================================================
+        // S0 = 1 - NORMAL MODE
+        // ====================================================================
+        // Check if S0 just transitioned from 0→1 (recovery from emergency)
+        if (last_s0_state == 0)
+        {
+            // S0 switched from emergency to normal! Show splash screen
+            USB_Print("S0 switched ON - Recovery from emergency\r\n");
+            OLED_ShowSplashScreen();
+            HAL_Delay(1000);  // Display splash for 1 second
+            last_s0_state = 1;
+
+            // Reset all system variables (fresh start after emergency)
+            sleep_mode_active = 1;
+            sleep_transition_steps = 0;
+            safety_check_passed = 0;
+            s2_1_hold_counter = 0;
+            s1_1_hold_counter = 0;
+            motor_active = 0;
+
+            USB_Print("System restarted - Entering SLEEP mode\r\n");
+        }
     }
 
     // ========================================================================
@@ -420,27 +452,31 @@ int main(void)
 
     // Update OLED display with mode info and percentages (every 10 cycles = 1 second)
     // Update immediately when entering/exiting SLEEP mode, safety status changes, or hold progress changes
-    static uint8_t oled_counter = 0;
-    static uint8_t last_sleep_state = 0;
-    static uint8_t last_safety_state = 0;
-    static uint8_t last_hold_counter = 0;
-    static uint8_t last_motor_state = 0;
-
-    uint8_t current_hold_progress = sleep_mode_active ? s2_1_hold_counter : s1_1_hold_counter;
-
-    if (sleep_mode_active != last_sleep_state ||
-        safety_check_passed != last_safety_state ||
-        current_hold_progress != last_hold_counter ||
-        motor_active != last_motor_state ||
-        ++oled_counter >= 10)
+    // IMPORTANT: Only update OLED when S0 = 1 (NORMAL mode), not in EMERGENCY mode (S0 = 0)
+    if (tx_data.switches.s0 == 1)
     {
-        oled_counter = 0;
-        last_sleep_state = sleep_mode_active;
-        last_safety_state = safety_check_passed;
-        last_hold_counter = current_hold_progress;
-        last_motor_state = motor_active;
-        OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active);
-        OLED_Update();
+        static uint8_t oled_counter = 0;
+        static uint8_t last_sleep_state = 0;
+        static uint8_t last_safety_state = 0;
+        static uint8_t last_hold_counter = 0;
+        static uint8_t last_motor_state = 0;
+
+        uint8_t current_hold_progress = sleep_mode_active ? s2_1_hold_counter : s1_1_hold_counter;
+
+        if (sleep_mode_active != last_sleep_state ||
+            safety_check_passed != last_safety_state ||
+            current_hold_progress != last_hold_counter ||
+            motor_active != last_motor_state ||
+            ++oled_counter >= 10)
+        {
+            oled_counter = 0;
+            last_sleep_state = sleep_mode_active;
+            last_safety_state = safety_check_passed;
+            last_hold_counter = current_hold_progress;
+            last_motor_state = motor_active;
+            OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active);
+            OLED_Update();
+        }
     }
 
 
