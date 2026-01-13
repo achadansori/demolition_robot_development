@@ -235,9 +235,6 @@ int main(void)
           safety_mode_active = 0;
           safety_transition_step = 0;
           // PWM will be restored by Control_Update() below
-
-          // EXIT SLEEP MODE: Set PB8 to LOW (normal mode)
-          GPIOB->BSRR = (1<<(8+16));  // BR8 = reset PB8 to LOW
         }
 
         // Update control outputs based on received data (normal operation)
@@ -276,8 +273,7 @@ int main(void)
           pwm_backup[i] = PWM_GetDutyCycle((PWM_Channel_t)i);
         }
 
-        // ENTER SLEEP MODE: Set PB8 to HIGH, PE6 to LOW
-        GPIOB->BSRR = (1<<8);       // BS8 = set PB8 to HIGH
+        // ENTER SLEEP MODE: Set PE6 to LOW
         GPIOE->BSRR = (1<<(6+16));  // BR6 = reset PE6 to LOW
       }
     }

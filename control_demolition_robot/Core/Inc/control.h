@@ -21,7 +21,6 @@ extern "C" {
 /* Public function prototypes ------------------------------------------------*/
 void Control_Init(void);
 void Control_Update(LoRa_ReceivedData_t *lora_data);
-void Control_EmergencyStop(void);
 
 #ifdef __cplusplus
 }

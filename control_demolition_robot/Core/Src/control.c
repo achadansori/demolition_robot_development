@@ -14,7 +14,6 @@
 /* Private defines -----------------------------------------------------------*/
 #define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
 #define JOYSTICK_DEADZONE   5       // Deadzone around center (reduced for wider range, smoother control)
-#define INVALID_MODE_NOISE_FILTER 5 // Require 5 consecutive invalid modes before emergency stop
 
 /* Smoothing parameters for solenoid control */
 #define PWM_RAMPING_ENABLED 1       // Enable PWM ramping for smooth transitions
@@ -30,30 +29,27 @@ typedef struct {
 
 // PWM limits for each output - indexed by PWM channel enum
 static PWM_Limits_t pwm_limits[20] = {
-    [PWM_1_BRAKE]                    = {00, 70},  // Brake
-    [PWM_2_CYLINDER_1_ON]            = {00, 70},  // Cylinder 1 ON
-    [PWM_3_CYLINDER_2_OUT]           = {00, 70},  // Cylinder 2 OUT
-    [PWM_4_CYLINDER_2_IN]            = {00, 70},  // Cylinder 2 IN
-    [PWM_5_CYLINDER_3_OUT]           = {00, 70},  // Cylinder 3 OUT (Bucket)
-    [PWM_6_CYLINDER_3_IN]            = {00, 70},  // Cylinder 3 IN (Bucket)
-    [PWM_7_CYLINDER_4_OUT]           = {00, 70},  // Cylinder 4 OUT
-    [PWM_8_CYLINDER_4_IN]            = {00, 70},  // Cylinder 4 IN
-    [PWM_9_TOOL_1]                   = {00, 70},  // Tool 1 (Reserved)
-    [PWM_10_TOOL_2]                  = {00, 70},  // Tool 2 (Reserved)
-    [PWM_11_SLEW_CW]                 = {00, 70},  // Slew CW
-    [PWM_12_SLEW_CCW]                = {00, 70},  // Slew CCW
-    [PWM_13_OUTRIGGER_LEFT_UP]       = {00, 100},  // Outrigger Left UP
-    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {00, 100},  // Outrigger Left DOWN
-    [PWM_15_OUTRIGGER_RIGHT_UP]      = {00, 100},  // Outrigger Right UP
-    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {00, 100},  // Outrigger Right DOWN
-    [PWM_17_TRACK_RIGHT_FORWARD]     = {00, 70},  // Track Right FORWARD
-    [PWM_18_TRACK_RIGHT_BACKWARD]    = {00, 70},  // Track Right BACKWARD
-    [PWM_19_TRACK_LEFT_FORWARD]      = {00, 70},  // Track Left FORWARD
-    [PWM_20_TRACK_LEFT_BACKWARD]     = {00, 70},  // Track Left BACKWARD
+    [PWM_1_BRAKE]                    = {30, 60},  // Brake
+    [PWM_2_CYLINDER_1_ON]            = {30, 60},  // Cylinder 1 ON
+    [PWM_3_CYLINDER_2_OUT]           = {30, 60},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {30, 60},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {30, 50},  // Cylinder 3 OUT (Bucket)
+    [PWM_6_CYLINDER_3_IN]            = {30, 50},  // Cylinder 3 IN (Bucket)
+    [PWM_7_CYLINDER_4_OUT]           = {30, 60},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {30, 60},  // Cylinder 4 IN
+    [PWM_9_TOOL_1]                   = {30, 60},  // Tool 1 (Reserved)
+    [PWM_10_TOOL_2]                  = {30, 60},  // Tool 2 (Reserved)
+    [PWM_11_SLEW_CW]                 = {30, 50},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {30, 50},  // Slew CCW
+    [PWM_13_OUTRIGGER_LEFT_UP]       = {30, 100},  // Outrigger Left UP
+    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {30, 100},  // Outrigger Left DOWN
+    [PWM_15_OUTRIGGER_RIGHT_UP]      = {30, 100},  // Outrigger Right UP
+    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {30, 100},  // Outrigger Right DOWN
+    [PWM_17_TRACK_RIGHT_FORWARD]     = {20, 35},  // Track Right FORWARD
+    [PWM_18_TRACK_RIGHT_BACKWARD]    = {15, 30},  // Track Right BACKWARD
+    [PWM_19_TRACK_LEFT_FORWARD]      = {25, 40},  // Track Left FORWARD
+    [PWM_20_TRACK_LEFT_BACKWARD]     = {35, 50},  // Track Left BACKWARD
 };
-
-/* Private variables - noise filters -----------------------------------------*/
-static uint8_t invalid_mode_counter = 0;  // Count consecutive invalid modes
 
 /* Private variables - PWM smoothing -----------------------------------------*/
 #if PWM_RAMPING_ENABLED
@@ -74,7 +70,7 @@ void Control_Init(void)
     PWM_Init();
 
     // Set all outputs to safe state (0%)
-    Control_EmergencyStop();
+    PWM_StopAll();
 }
 
 /**
@@ -85,6 +81,32 @@ void Control_Init(void)
 void Control_Update(LoRa_ReceivedData_t *lora_data)
 {
     if (lora_data == NULL) return;
+
+    // ========================================================================
+    // EMERGENCY MODE - S0 = 0 (HIGHEST PRIORITY!)
+    // ========================================================================
+    // S0 = 0: Emergency stop - PB8 LOW, all PWM outputs to 0%
+    // S0 = 1: Normal operation - PB8 HIGH
+    // This check is at the very top to ensure emergency has absolute priority
+
+    if (lora_data->s0 == 0)
+    {
+        // Emergency mode activated!
+        // Set PB8 LOW for emergency signal
+        GPIOB->BSRR = (1<<(8+16)); // BR8 = reset PB8 to LOW
+
+        // Stop all PWM outputs immediately
+        //PWM_StopAll();
+
+        // Force PE6 (motor starter) to LOW during emergency
+        GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
+
+    }
+    else
+    {
+        // Normal operation - set PB8 HIGH
+        GPIOB->BSRR = (1<<8);      // BS8 = set PB8 to HIGH
+    }
 
     // ========================================================================
     // MODE DETECTION
@@ -102,8 +124,6 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     // ========================================================================
     if (mode_upper)
     {
-        // Valid mode detected - reset invalid mode counter
-        invalid_mode_counter = 0;
         // --------------------------------------------------------------------
         // LEFT STICK Y-AXIS: CYLINDER 3 (Bucket)
         // --------------------------------------------------------------------
@@ -274,8 +294,6 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     // ========================================================================
     else if (mode_lower)
     {
-        // Valid mode detected - reset invalid mode counter
-        invalid_mode_counter = 0;
         // --------------------------------------------------------------------
         // LEFT STICK Y-AXIS: TRACK LEFT
         // --------------------------------------------------------------------
@@ -402,39 +420,7 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     {
         // TODO: Implement dual mode in the future
         // This mode will combine both excavator and mobility controls
-        // For now, treat as invalid mode and use noise filter
-
-        // Increment invalid mode counter
-        if (invalid_mode_counter < INVALID_MODE_NOISE_FILTER)
-        {
-            invalid_mode_counter++;
-        }
-
-        // Only stop if we've had INVALID_MODE_NOISE_FILTER consecutive invalid modes
-        if (invalid_mode_counter >= INVALID_MODE_NOISE_FILTER)
-        {
-            Control_EmergencyStop();
-        }
-    }
-
-    // ========================================================================
-    // INVALID MODE - EMERGENCY STOP (with noise filter)
-    // ========================================================================
-    else
-    {
-        // Unknown mode combination - use noise filter before emergency stop
-
-        // Increment invalid mode counter
-        if (invalid_mode_counter < INVALID_MODE_NOISE_FILTER)
-        {
-            invalid_mode_counter++;
-        }
-
-        // Only stop if we've had INVALID_MODE_NOISE_FILTER consecutive invalid modes
-        if (invalid_mode_counter >= INVALID_MODE_NOISE_FILTER)
-        {
-            Control_EmergencyStop();
-        }
+        // For now, do nothing
     }
 
     // ========================================================================
@@ -448,20 +434,12 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     if (lora_data->s1_1 == 1)
     {
         GPIOE->BSRR = (1<<6);      // BS6 = set PE6 to HIGH
+
     }
     else
     {
         GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
     }
-}
-
-/**
-  * @brief  Emergency stop - set all PWM outputs to 0% and motor starter OFF
-  * @retval None
-  */
-void Control_EmergencyStop(void)
-{
-    PWM_StopAll();  // This will set all PWM channels to 0%
 }
 
 /**
@@ -529,7 +507,7 @@ static uint8_t ApplySmoothing(uint8_t new_pwm, PWM_Channel_t channel)
   * @param  joystick_value: Raw joystick value (0-255)
   * @param  inverse: true = map 0-127 to 0-100%, false = map 127-255 to 0-100%
   * @param  channel: PWM channel to get min/max limits for
-  * @retval PWM duty cycle percentage (min-max% when active, 0% when stopped)
+  * @retval PWM duty cycle percen tage (min-max% when active, 0% when stopped)
   */
 static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channel_t channel)
 {
