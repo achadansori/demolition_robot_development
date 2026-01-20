@@ -16,9 +16,9 @@
 #define JOYSTICK_DEADZONE   5       // Deadzone around center (reduced for wider range, smoother control)
 
 /* Smoothing parameters for solenoid control */
-#define PWM_RAMPING_ENABLED 1       // Enable PWM ramping for smooth transitions
-#define MAX_PWM_CHANGE_PER_CYCLE 10 // Max PWM change per cycle (% per 50ms) - lower = smoother but slower response
-#define SMOOTH_CURVE_ENABLED 1      // Enable non-linear curve for smooth start/stop
+#define PWM_RAMPING_ENABLED 0       // OFF - instant response (no delay)
+#define MAX_PWM_CHANGE_PER_CYCLE 10 // Not used when ramping OFF
+#define SMOOTH_CURVE_ENABLED 0      // OFF - linear mapping (no delay)
 
 /* Private variables ---------------------------------------------------------*/
 // PWM limits per output channel (min, max) - adjustable per solenoid
@@ -29,26 +29,26 @@ typedef struct {
 
 // PWM limits for each output - indexed by PWM channel enum
 static PWM_Limits_t pwm_limits[20] = {
-    [PWM_1_BRAKE]                    = {30, 60},  // Brake
-    [PWM_2_CYLINDER_1_ON]            = {30, 60},  // Cylinder 1 ON
-    [PWM_3_CYLINDER_2_OUT]           = {30, 60},  // Cylinder 2 OUT
-    [PWM_4_CYLINDER_2_IN]            = {30, 60},  // Cylinder 2 IN
-    [PWM_5_CYLINDER_3_OUT]           = {30, 50},  // Cylinder 3 OUT (Bucket)
-    [PWM_6_CYLINDER_3_IN]            = {30, 50},  // Cylinder 3 IN (Bucket)
-    [PWM_7_CYLINDER_4_OUT]           = {30, 60},  // Cylinder 4 OUT
-    [PWM_8_CYLINDER_4_IN]            = {30, 60},  // Cylinder 4 IN
-    [PWM_9_TOOL_1]                   = {30, 60},  // Tool 1 (Reserved)
-    [PWM_10_TOOL_2]                  = {30, 60},  // Tool 2 (Reserved)
-    [PWM_11_SLEW_CW]                 = {30, 50},  // Slew CW
-    [PWM_12_SLEW_CCW]                = {30, 50},  // Slew CCW
-    [PWM_13_OUTRIGGER_LEFT_UP]       = {30, 100},  // Outrigger Left UP
-    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {30, 100},  // Outrigger Left DOWN
-    [PWM_15_OUTRIGGER_RIGHT_UP]      = {30, 100},  // Outrigger Right UP
-    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {30, 100},  // Outrigger Right DOWN
-    [PWM_17_TRACK_RIGHT_FORWARD]     = {20, 35},  // Track Right FORWARD
-    [PWM_18_TRACK_RIGHT_BACKWARD]    = {15, 30},  // Track Right BACKWARD
-    [PWM_19_TRACK_LEFT_FORWARD]      = {25, 40},  // Track Left FORWARD
-    [PWM_20_TRACK_LEFT_BACKWARD]     = {35, 50},  // Track Left BACKWARD
+    [PWM_1_CYLINDER_1_OUT]           = {40, 60},  // Cylinder 1 OUT
+    [PWM_2_CYLINDER_1_IN]            = {40, 60},  // Cylinder 1 IN
+    [PWM_3_CYLINDER_2_OUT]           = {40, 55},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {40, 50},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {42, 65},  // Cylinder 3 OUT (Bucket)
+    [PWM_6_CYLINDER_3_IN]            = {42, 60},  // Cylinder 3 IN (Bucket)
+    [PWM_7_CYLINDER_4_OUT]           = {42, 60},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {42, 60},  // Cylinder 4 IN
+    [PWM_9_TOOL_1]                   = {0, 75},  // Tool 1 (Reserved)
+    [PWM_10_TOOL_2]                  = {0, 60},  // Tool 2 (Reserved)
+    [PWM_11_SLEW_CW]                 = {35, 45},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {35, 45},  // Slew CCW
+    [PWM_13_OUTRIGGER_LEFT_UP]       = {30, 85},  // Outrigger Left UP
+    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {30, 85},  // Outrigger Left DOWN
+    [PWM_15_OUTRIGGER_RIGHT_UP]      = {30, 85},  // Outrigger Right UP
+    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {30, 85},  // Outrigger Right DOWN
+    [PWM_17_TRACK_RIGHT_FORWARD]     = {31, 56},  // Track Right FORWARD
+    [PWM_18_TRACK_RIGHT_BACKWARD]    = {31, 56},  // Track Right BACKWARD
+    [PWM_19_TRACK_LEFT_FORWARD]      = {38, 63},  // Track Left FORWARD
+    [PWM_20_TRACK_LEFT_BACKWARD]     = {51, 76},  // Track Left BACKWARD
 };
 
 /* Private variables - PWM smoothing -----------------------------------------*/
@@ -179,56 +179,70 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // RIGHT STICK Y-AXIS: CYLINDER 2 (Stick)
+        // RIGHT STICK Y-AXIS: CYLINDER 2 or CYLINDER 1
         // --------------------------------------------------------------------
-        // Normal mode (joy_right_btn1 = 0):
-        //   joy_right_y: 127→0   = Cylinder 2 UP   (PWM_3) 0→100%
-        //                127→255 = Cylinder 2 DOWN (PWM_4) 0→100%
-        // Reversed mode (joy_right_btn1 = 1 / Cylinder 1 ON pressed):
-        //   joy_right_y: 127→0   = Cylinder 2 DOWN (PWM_4) 0→100%
-        //                127→255 = Cylinder 2 UP   (PWM_3) 0→100%
+        // Normal mode (joy_right_btn2 = 0): Control Cylinder 2
+        //   joy_right_y: 127→0   = Cylinder 2 OUT (PWM_3) 0→100%
+        //                127→255 = Cylinder 2 IN  (PWM_4) 0→100%
+        // Cylinder 1 mode (joy_right_btn2 = 1): Control Cylinder 1
+        //   joy_right_y: 127→0   = Cylinder 1 IN  (PWM_2) 0→100%
+        //                127→255 = Cylinder 1 OUT (PWM_1) 0→100%
 
-        bool cylinder_2_reversed = (lora_data->joy_right_btn1 == 1);
+        bool cylinder_1_mode = (lora_data->joy_right_btn2 == 1);
 
         if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
             // Stick DOWN (0-117)
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true,
-                                                 cylinder_2_reversed ? PWM_4_CYLINDER_2_IN : PWM_3_CYLINDER_2_OUT);
-            if (cylinder_2_reversed)
+            if (cylinder_1_mode)
             {
-                // Reversed: Stick DOWN → Cylinder 2 DOWN
-                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
+                // Cylinder 1 mode: Stick DOWN → Cylinder 1 IN
+                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_2_CYLINDER_1_IN);
+                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, pwm_value);
+                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
+                // Stop Cylinder 2
                 PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
             }
             else
             {
-                // Normal: Stick DOWN → Cylinder 2 UP
+                // Normal: Stick DOWN → Cylinder 2 OUT
+                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_3_CYLINDER_2_OUT);
                 PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
                 PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+                // Stop Cylinder 1
+                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
+                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
             }
         }
         else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
             // Stick UP (137-255)
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false,
-                                                 cylinder_2_reversed ? PWM_3_CYLINDER_2_OUT : PWM_4_CYLINDER_2_IN);
-            if (cylinder_2_reversed)
+            if (cylinder_1_mode)
             {
-                // Reversed: Stick UP → Cylinder 2 UP
-                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
+                // Cylinder 1 mode: Stick UP → Cylinder 1 OUT
+                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_1_CYLINDER_1_OUT);
+                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, pwm_value);
+                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+                // Stop Cylinder 2
+                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
                 PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
             }
             else
             {
-                // Normal: Stick UP → Cylinder 2 DOWN
+                // Normal: Stick UP → Cylinder 2 IN
+                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_4_CYLINDER_2_IN);
                 PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
                 PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+                // Stop Cylinder 1
+                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
+                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
             }
         }
         else
         {
-            // Deadzone - stop both
+            // Deadzone - stop all
+            PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
+            PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
             PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
             PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         }
@@ -261,22 +275,35 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // BRAKE - Always ON in UPPER mode (100% PWM)
+        // BREAKER - 2 Valve Control
         // --------------------------------------------------------------------
-        PWM_SetDutyCycle(PWM_1_BRAKE, 100);
+        // Valve 1 (GPIO PB1): ON/OFF digital trigger by joy_left_btn2
+        // Valve 2 (PWM_10): Flow control by R8 potentiometer (proportional)
+        //
+        // joy_left_btn2 = 1 → Breaker ON (PB1 = HIGH)
+        // joy_left_btn2 = 0 → Breaker OFF (PB1 = LOW)
+        // R8: 0-255 → PWM_10: min-max% (respects pwm_limits)
 
-        // --------------------------------------------------------------------
-        // CYLINDER_1_ON - Controlled by joy_right_btn1
-        // Valve solenoid parallel between cylinder 1 and 2
-        // --------------------------------------------------------------------
-        if (lora_data->joy_right_btn1 == 1)
+        if (lora_data->joy_left_btn2 == 1)
         {
-            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 100);  // Open valve
+            GPIO_SetTool1(1);  // Valve 1: Breaker ON (digital HIGH)
         }
         else
         {
-            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);    // Close valve
+            GPIO_SetTool1(0);  // Valve 1: Breaker OFF (digital LOW)
         }
+
+        // Valve 2: Flow control (proportional from R8)
+        // R8 range: 0-255 → PWM range: min-max% (respects pwm_limits)
+        uint8_t breaker_flow_raw = (lora_data->r8 * 100) / 255;
+        uint8_t breaker_flow = 0;
+        if (breaker_flow_raw > 0)
+        {
+            // Scale from 0-100% to min-max%
+            breaker_flow = pwm_limits[PWM_10_TOOL_2].min +
+                ((breaker_flow_raw * (pwm_limits[PWM_10_TOOL_2].max - pwm_limits[PWM_10_TOOL_2].min)) / 100);
+        }
+        PWM_SetDutyCycle(PWM_10_TOOL_2, breaker_flow);
 
         // Stop all mobility controls in UPPER mode
         PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
@@ -322,30 +349,30 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // LEFT STICK X-AXIS: OUTRIGGER LEFT
+        // LEFT STICK X-AXIS: OUTRIGGER RIGHT (swapped due to electrical wiring)
         // --------------------------------------------------------------------
-        // joy_left_x: 127→255 = Outrigger Left Up   (PWM_13) 0→100%
-        //             127→0   = Outrigger Left Down (PWM_14) 0→100%
+        // joy_left_x: 127→255 = Outrigger Right Up   (PWM_15) 0→100%
+        //             127→0   = Outrigger Right Down (PWM_16) 0→100%
 
         if (lora_data->joy_left_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Moving LEFT (0-117) → Outrigger Left Down
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true, PWM_14_OUTRIGGER_LEFT_DOWN);
-            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, pwm_value);
-            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
+            // Moving LEFT (0-117) → Outrigger Right Down
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true, PWM_16_OUTRIGGER_RIGHT_DOWN);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, pwm_value);
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
         }
         else if (lora_data->joy_left_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Moving RIGHT (137-255) → Outrigger Left Up
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false, PWM_13_OUTRIGGER_LEFT_UP);
-            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, pwm_value);
-            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
+            // Moving RIGHT (137-255) → Outrigger Right Up
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false, PWM_15_OUTRIGGER_RIGHT_UP);
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, pwm_value);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
         }
         else
         {
             // Deadzone - stop both
-            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
-            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
         }
 
         // --------------------------------------------------------------------
@@ -376,51 +403,118 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // RIGHT STICK X-AXIS: OUTRIGGER RIGHT
+        // RIGHT STICK X-AXIS: OUTRIGGER LEFT (swapped due to electrical wiring)
         // --------------------------------------------------------------------
-        // joy_right_x: 127→255 = Outrigger Right Down (PWM_16) 0→100%
-        //              127→0   = Outrigger Right Up   (PWM_15) 0→100%
+        // joy_right_x: 127→255 = Outrigger Left Down (PWM_14) 0→100%
+        //              127→0   = Outrigger Left Up   (PWM_13) 0→100%
 
         if (lora_data->joy_right_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Moving LEFT (0-117) → Outrigger Right Up
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true, PWM_15_OUTRIGGER_RIGHT_UP);
-            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, pwm_value);
-            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
+            // Moving LEFT (0-117) → Outrigger Left Up
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true, PWM_13_OUTRIGGER_LEFT_UP);
+            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, pwm_value);
+            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
         }
         else if (lora_data->joy_right_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Moving RIGHT (137-255) → Outrigger Right Down
-            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false, PWM_16_OUTRIGGER_RIGHT_DOWN);
-            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, pwm_value);
-            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+            // Moving RIGHT (137-255) → Outrigger Left Down
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false, PWM_14_OUTRIGGER_LEFT_DOWN);
+            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, pwm_value);
+            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
         }
         else
         {
             // Deadzone - stop both
-            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
-            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
+            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
+            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
         }
 
         // Stop all excavator controls in LOWER mode
-        PWM_SetDutyCycle(PWM_1_BRAKE, 0);              // Stop brake
-        PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);      // Close valve
+        PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
         PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
         PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
         PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
         PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
         PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
+        GPIO_SetTool1(0);                         // Stop Breaker Valve 1 (digital OFF)
+        PWM_SetDutyCycle(PWM_10_TOOL_2, 0);       // Stop Breaker Valve 2
     }
 
     // ========================================================================
-    // MODE DUAL - RESERVED FOR FUTURE IMPLEMENTATION
+    // MODE DUAL - COMBINED TRACK CONTROL
     // ========================================================================
+    // When joy_right_btn1 is pressed, both tracks move together
+    // joy_right_y controls forward/backward for both tracks simultaneously
     else if (mode_dual)
     {
-        // TODO: Implement dual mode in the future
-        // This mode will combine both excavator and mobility controls
-        // For now, do nothing
+        // --------------------------------------------------------------------
+        // BOTH TRACKS - Controlled by joy_right_btn1 + joy_right_y
+        // --------------------------------------------------------------------
+        // joy_right_btn1 = 1 (pressed): Enable track control
+        //   joy_right_y: 127→255 = Both tracks FORWARD
+        //                127→0   = Both tracks BACKWARD
+
+        if (lora_data->joy_right_btn1 == 1)
+        {
+            if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+            {
+                // Moving DOWN (0-117) → Both tracks BACKWARD
+                uint8_t pwm_left = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_20_TRACK_LEFT_BACKWARD);
+                uint8_t pwm_right = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_18_TRACK_RIGHT_BACKWARD);
+
+                PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, pwm_left);
+                PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, pwm_right);
+                PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+                PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+            }
+            else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+            {
+                // Moving UP (137-255) → Both tracks FORWARD
+                uint8_t pwm_left = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_19_TRACK_LEFT_FORWARD);
+                uint8_t pwm_right = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_17_TRACK_RIGHT_FORWARD);
+
+                PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, pwm_left);
+                PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, pwm_right);
+                PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+                PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+            }
+            else
+            {
+                // Deadzone - stop all tracks
+                PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+                PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+                PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+                PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+            }
+        }
+        else
+        {
+            // joy_right_btn1 not pressed - stop all tracks
+            PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+            PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+            PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+            PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+        }
+
+        // Stop all excavator controls in DUAL mode
+        PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+        PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+        PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+        PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
+        PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
+        PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
+        PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
+        PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
+        PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
+        GPIO_SetTool1(0);                          // Stop Breaker Valve 1 (digital OFF)
+        PWM_SetDutyCycle(PWM_10_TOOL_2, 0);        // Stop Breaker Valve 2
+        PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
+        PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
+        PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+        PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
     }
 
     // ========================================================================

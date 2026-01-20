@@ -23,7 +23,7 @@
 //   2000Hz+       - Too fast, TIP122 may overheat! ⚠️
 // Note: TIP122 max safe frequency ~5-10kHz, but 500Hz-1kHz optimal for efficiency
 // ============================================================================
-#define PWM_FREQUENCY_HZ    1000    // <- OPTIMIZED for TIP122: Fast response + Safe switching
+#define PWM_FREQUENCY_HZ    500    // <- OPTIMIZED for TIP122: Fast response + Safe switching
 
 // ============================================================================
 // AUTO-CALCULATED VALUES (DO NOT MODIFY BELOW THIS LINE)
@@ -99,12 +99,20 @@ static void PWM_ConfigureGPIO(void)
     GPIOA->AFR[0] |= (1<<(0*4)) | (1<<(1*4)) | (1<<(2*4)) | (1<<(3*4));  // AF1
     GPIOA->OSPEEDR |= (3<<(0*2)) | (3<<(1*2)) | (3<<(2*2)) | (3<<(3*2));
 
-    // Configure TIM3 pins (PB0, PB1, PB4, PB5) - AF2
-    GPIOB->MODER &= ~((3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2)));
-    GPIOB->MODER |= (2<<(0*2)) | (2<<(1*2)) | (2<<(4*2)) | (2<<(5*2));
-    GPIOB->AFR[0] &= ~((0xF<<(0*4)) | (0xF<<(1*4)) | (0xF<<(4*4)) | (0xF<<(5*4)));
-    GPIOB->AFR[0] |= (2<<(0*4)) | (2<<(1*4)) | (2<<(4*4)) | (2<<(5*4));  // AF2
-    GPIOB->OSPEEDR |= (3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2));
+    // Configure TIM3 pins (PB0, PB4, PB5) - AF2 (PB1 removed - now GPIO for Tool 1)
+    GPIOB->MODER &= ~((3<<(0*2)) | (3<<(4*2)) | (3<<(5*2)));
+    GPIOB->MODER |= (2<<(0*2)) | (2<<(4*2)) | (2<<(5*2));
+    GPIOB->AFR[0] &= ~((0xF<<(0*4)) | (0xF<<(4*4)) | (0xF<<(5*4)));
+    GPIOB->AFR[0] |= (2<<(0*4)) | (2<<(4*4)) | (2<<(5*4));  // AF2
+    GPIOB->OSPEEDR |= (3<<(0*2)) | (3<<(4*2)) | (3<<(5*2));
+
+    // Configure PB1 as GPIO output for Tool 1 (digital trigger, not PWM)
+    GPIOB->MODER &= ~(3<<(1*2));
+    GPIOB->MODER |= (1<<(1*2));     // GPIO output mode
+    GPIOB->OTYPER &= ~(1<<1);       // Push-pull output
+    GPIOB->PUPDR &= ~(3<<(1*2));    // No pull-up, no pull-down
+    GPIOB->OSPEEDR |= (3<<(1*2));   // High speed
+    GPIOB->BSRR = (1<<(1+16));      // Set LOW initially (BR1)
 
     // Configure TIM4 pins (PD12, PD13, PD14, PD15) - AF2
     GPIOD->MODER &= ~((3<<(12*2)) | (3<<(13*2)) | (3<<(14*2)) | (3<<(15*2)));
@@ -351,15 +359,14 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
     switch(channel)
     {
         // TIM8 channels
-        case PWM_1_BRAKE:           TIM8->CCR1 = ccr_value; break;  // PC6
-        case PWM_2_CYLINDER_1_ON:   TIM8->CCR2 = ccr_value; break;  // PC7
+        case PWM_1_CYLINDER_1_OUT:  TIM8->CCR1 = ccr_value; break;  // PC6
+        case PWM_2_CYLINDER_1_IN:   TIM8->CCR2 = ccr_value; break;  // PC7
         case PWM_3_CYLINDER_2_OUT:  TIM8->CCR4 = ccr_value; break;  // PC9
         case PWM_10_TOOL_2:         TIM8->CCR3 = ccr_value; break;  // PC8
 
-        // TIM3 channels
+        // TIM3 channels (Note: PWM_9_TOOL_1/PB1 removed - now GPIO controlled via GPIO_SetTool1())
         case PWM_4_CYLINDER_2_IN:   TIM3->CCR2 = ccr_value; break;  // PB5
         case PWM_6_CYLINDER_3_IN:   TIM3->CCR3 = ccr_value; break;  // PB0
-        case PWM_9_TOOL_1:          TIM3->CCR4 = ccr_value; break;  // PB1
         case PWM_14_OUTRIGGER_LEFT_DOWN: TIM3->CCR1 = ccr_value; break;  // PB4
 
         // TIM2 channels
@@ -418,4 +425,24 @@ void PWM_StopAll(void)
 
     // Clear duty array
     memset(pwm_duty, 0, sizeof(pwm_duty));
+
+    // Also turn off Tool 1 GPIO
+    GPIO_SetTool1(0);
+}
+
+/**
+  * @brief  Set Tool 1 GPIO output (digital trigger, ON/OFF only)
+  * @param  state: 0 = OFF (LOW), 1 = ON (HIGH)
+  * @retval None
+  */
+void GPIO_SetTool1(uint8_t state)
+{
+    if (state)
+    {
+        GPIOB->BSRR = (1<<1);       // BS1 = set PB1 to HIGH
+    }
+    else
+    {
+        GPIOB->BSRR = (1<<(1+16));  // BR1 = reset PB1 to LOW
+    }
 }

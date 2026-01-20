@@ -20,9 +20,6 @@
 #include "lora.h"
 #include "control.h"
 #include "pwm.h"
-#include "usbd_cdc_if.h"
-#include <stdio.h>
-#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -137,66 +134,14 @@ int main(void)
   // Initialize LoRa receiver
   LoRa_Receiver_Init(&huart1, GPIOE, GPIO_PIN_4, GPIOE, GPIO_PIN_5);
 
-  // Wait for USB to be ready (reduced from 2000ms)
-  HAL_Delay(1000);
-
-  // Send startup message to USB
-  char *startup_msg = "\r\n=================================\r\n";
-  CDC_Transmit_FS((uint8_t*)startup_msg, strlen(startup_msg));
-  HAL_Delay(20);
-
-  char *title_msg = "   LoRa Receiver Started\r\n";
-  CDC_Transmit_FS((uint8_t*)title_msg, strlen(title_msg));
-  HAL_Delay(20);
-
-  char *port_msg = "   STM32F401CCU6 - UART1\r\n";
-  CDC_Transmit_FS((uint8_t*)port_msg, strlen(port_msg));
-  HAL_Delay(20);
-
-  char *pin_msg = "   RX: PA10 | TX: PA9\r\n";
-  CDC_Transmit_FS((uint8_t*)pin_msg, strlen(pin_msg));
-  HAL_Delay(20);
-
-  char *end_msg = "=================================\r\n\r\n";
-  CDC_Transmit_FS((uint8_t*)end_msg, strlen(end_msg));
-  HAL_Delay(50);
-
-  // Configure LoRa module
-  char *config_msg = "Configuring LoRa...\r\n";
-  CDC_Transmit_FS((uint8_t*)config_msg, strlen(config_msg));
-
-  if (LoRa_Receiver_Configure())
-  {
-      char *success_msg = "LoRa configured successfully!\r\n\r\n";
-      CDC_Transmit_FS((uint8_t*)success_msg, strlen(success_msg));
-  }
-  else
-  {
-      char *fail_msg = "LoRa configuration failed!\r\n\r\n";
-      CDC_Transmit_FS((uint8_t*)fail_msg, strlen(fail_msg));
-  }
-
-  HAL_Delay(50);
-
-  // Send startup info
-  char *format_msg = "Format: JL:x,y,b1,b2 JR:x,y,b1,b2 POT:R8=x,R1=x SW:S0=x,S1=xx,S2=xx,S4=xx,S5=xx\r\n\r\n";
-  CDC_Transmit_FS((uint8_t*)format_msg, strlen(format_msg));
-
-  HAL_Delay(50);
-
-  char *waiting_msg = "Waiting for LoRa data...\r\n\r\n";
-  CDC_Transmit_FS((uint8_t*)waiting_msg, strlen(waiting_msg));
-  HAL_Delay(50);
+  // Configure LoRa module (no USB debug - faster startup)
+  LoRa_Receiver_Configure();
 
   // Start listening for LoRa data
   LoRa_Receiver_StartListening();
 
   // Initialize control system (PWM outputs)
   Control_Init();
-
-  char *control_msg = "Control system initialized - Ready!\r\n\r\n";
-  CDC_Transmit_FS((uint8_t*)control_msg, strlen(control_msg));
-  HAL_Delay(50);
 
   // Initialize safety timeout - give transmitter time to start (1 second grace period)
   last_data_received_time = HAL_GetTick();
