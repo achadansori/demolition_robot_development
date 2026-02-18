@@ -72,7 +72,7 @@ void Debug_Printf(const char* format, ...);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+volatile uint8_t s0_emergency_flag = 0;  // Set by EXTI0 ISR when S0 = 0
 /* USER CODE END 0 */
 
 /**
@@ -116,6 +116,12 @@ int main(void)
   // Re-configure switch pins with internal pull-down (survives CubeMX regeneration)
   MX_GPIO_ConfigureSwitchPullDown();
 
+  // Read initial S0 state (EXTI only triggers on edges, need initial state)
+  if (HAL_GPIO_ReadPin(S0_GPIO_Port, S0_Pin) == GPIO_PIN_RESET)
+  {
+      s0_emergency_flag = 1;
+  }
+
   // Wait for USB CDC to be ready
   HAL_Delay(2000);
 
@@ -134,18 +140,22 @@ int main(void)
   uint32_t tx_fail_count = 0;
   uint32_t tx_not_ready = 0;
 
+
   // SLEEP mode variables
   uint8_t sleep_mode_active = 1;  // Start in SLEEP mode for safety!
   uint8_t sleep_transition_steps = 0;
   uint8_t safety_check_passed = 0;
-  uint8_t last_s2_1_state = 0;
-  uint8_t s2_1_hold_counter = 0;
+  uint8_t last_s1_1_state = 0;
   uint8_t s1_1_hold_counter = 0;
+  uint8_t s1_2_hold_counter = 0;
+  uint8_t calibration_done = 0;
+  uint8_t s2_1_hold_counter = 0;
   uint8_t last_s0_state = 1;  // Track S0 state to detect S0 transitions (0→1)
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps transition
-  #define S2_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required
-  #define S1_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required
+  #define S1_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (exit SLEEP)
+  #define S1_2_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (calibration)
+  #define S2_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (start MOTOR)
 
   // Motor starter variables
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
@@ -253,11 +263,17 @@ int main(void)
     // ========================================================================
     // S0 EMERGENCY SWITCH - Controls emergency relay on robot
     // ========================================================================
-    if (tx_data.switches.s0 == 0)
+    // Also update tx_data.switches.s0 from interrupt flag
+    tx_data.switches.s0 = s0_emergency_flag ? 0 : 1;
+
+    if (s0_emergency_flag)
     {
-        // S0 = 0 - EMERGENCY MODE
-        OLED_Clear();
-        OLED_Update();
+        // S0 = 0 - EMERGENCY MODE (only update OLED once on transition)
+        if (last_s0_state != 0)
+        {
+            OLED_Clear();
+            OLED_Update();
+        }
 
         // Override all controls to SAFE values for emergency
         tx_data.joystick.left_x  = 127;
@@ -284,8 +300,10 @@ int main(void)
         sleep_mode_active = 1;
         sleep_transition_steps = 0;
         safety_check_passed = 0;
-        s2_1_hold_counter = 0;
         s1_1_hold_counter = 0;
+        s1_2_hold_counter = 0;
+        calibration_done = 0;
+        s2_1_hold_counter = 0;
         motor_active = 0;
 
         // Red LED ON for emergency
@@ -304,8 +322,10 @@ int main(void)
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
             safety_check_passed = 0;
-            s2_1_hold_counter = 0;
             s1_1_hold_counter = 0;
+            s1_2_hold_counter = 0;
+            calibration_done = 0;
+            s2_1_hold_counter = 0;
             motor_active = 0;
         }
     }
@@ -331,13 +351,12 @@ int main(void)
             joystick_safe = 1;
         }
 
-        // Check all switches are 0 (except S0 and S2_1)
+        // Check all switches are 0 (except S0, S1_1 for exit SLEEP, S1_2 for calibration)
         if ((tx_data.switches.joy_left_btn1  == 0) &&
             (tx_data.switches.joy_left_btn2  == 0) &&
             (tx_data.switches.joy_right_btn1 == 0) &&
             (tx_data.switches.joy_right_btn2 == 0) &&
-            (tx_data.switches.s1_1 == 0) &&
-            (tx_data.switches.s1_2 == 0) &&
+            (tx_data.switches.s2_1 == 0) &&
             (tx_data.switches.s2_2 == 0) &&
             (tx_data.switches.s4_1 == 0) &&
             (tx_data.switches.s4_2 == 0) &&
@@ -351,27 +370,44 @@ int main(void)
         {
             safety_check_passed = 1;
 
-            if (tx_data.switches.s2_1 == 1)
+            // S1_2 = Joystick Calibration (in SLEEP mode only, hold to calibrate, once only)
+            if (!calibration_done && tx_data.switches.s1_2 == 1)
             {
-                s2_1_hold_counter++;
-                if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
+                s1_2_hold_counter++;
+                if (s1_2_hold_counter >= S1_2_HOLD_REQUIRED)
+                {
+                    Joystick_Calibrate();
+                    calibration_done = 1;
+                    s1_2_hold_counter = 0;
+                }
+            }
+            else if (!calibration_done)
+            {
+                s1_2_hold_counter = 0;
+            }
+
+            if (tx_data.switches.s1_1 == 1)
+            {
+                s1_1_hold_counter++;
+                if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
                 {
                     sleep_mode_active = 0;
                     sleep_transition_steps = 0;
-                    s2_1_hold_counter = 0;
+                    s1_1_hold_counter = 0;
                 }
             }
             else
             {
-                s2_1_hold_counter = 0;
+                s1_1_hold_counter = 0;
             }
-            last_s2_1_state = tx_data.switches.s2_1;
+            last_s1_1_state = tx_data.switches.s1_1;
         }
         else
         {
             safety_check_passed = 0;
-            last_s2_1_state = 0;
-            s2_1_hold_counter = 0;
+            last_s1_1_state = 0;
+            s1_1_hold_counter = 0;
+            s1_2_hold_counter = 0;
 
             // Override transmitted data to safe values during SLEEP
             tx_data.joystick.left_x  = 127;
@@ -396,31 +432,31 @@ int main(void)
     else
     {
         safety_check_passed = 0;
-        last_s2_1_state = tx_data.switches.s2_1;
+        last_s1_1_state = tx_data.switches.s1_1;
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL - S1_1 HOLD (1 second) - SELF-HOLDING
+    // MOTOR STARTER CONTROL - S2_1 HOLD - SELF-HOLDING
     // ========================================================================
     if (!sleep_mode_active)
     {
-        if (tx_data.switches.s1_1 == 1)
+        if (tx_data.switches.s2_1 == 1)
         {
-            s1_1_hold_counter++;
-            if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
+            s2_1_hold_counter++;
+            if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
             {
                 motor_active = 1;
             }
         }
         else
         {
-            s1_1_hold_counter = 0;
+            s2_1_hold_counter = 0;
         }
     }
     else
     {
         motor_active = 0;
-        s1_1_hold_counter = 0;
+        s2_1_hold_counter = 0;
     }
 
     // Update motor state in tx_data before transmission
@@ -455,13 +491,15 @@ int main(void)
         static uint8_t last_safety_state = 0;
         static uint8_t last_hold_counter = 0;
         static uint8_t last_motor_state = 0;
+        static uint8_t last_cal_state = 0;
 
-        uint8_t current_hold_progress = sleep_mode_active ? s2_1_hold_counter : s1_1_hold_counter;
+        uint8_t current_hold_progress = sleep_mode_active ? s1_1_hold_counter : s2_1_hold_counter;
 
         if (sleep_mode_active != last_sleep_state ||
             safety_check_passed != last_safety_state ||
             current_hold_progress != last_hold_counter ||
             motor_active != last_motor_state ||
+            s1_2_hold_counter != last_cal_state ||
             ++oled_counter >= 10)
         {
             oled_counter = 0;
@@ -469,7 +507,9 @@ int main(void)
             last_safety_state = safety_check_passed;
             last_hold_counter = current_hold_progress;
             last_motor_state = motor_active;
-            OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active);
+            last_cal_state = s1_2_hold_counter;
+            uint8_t cal_progress = calibration_done ? 255 : s1_2_hold_counter;  // 255 = done
+            OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active, cal_progress);
             OLED_Update();
         }
     }

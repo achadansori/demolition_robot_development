@@ -53,13 +53,13 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+extern volatile uint8_t s0_emergency_flag;  // Set by EXTI0 interrupt when S0=0
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define S1_2_Pin GPIO_PIN_3
+#define S1_2_Pin GPIO_PIN_5
 #define S1_2_GPIO_Port GPIOE
-#define S1_1_Pin GPIO_PIN_5
+#define S1_1_Pin GPIO_PIN_3
 #define S1_1_GPIO_Port GPIOE
 #define PC14_OSC32_IN_Pin GPIO_PIN_14
 #define PC14_OSC32_IN_GPIO_Port GPIOC
@@ -127,17 +127,17 @@ void Error_Handler(void);
 #define Audio_RST_GPIO_Port GPIOD
 #define LED_G_Pin GPIO_PIN_5
 #define LED_G_GPIO_Port GPIOD
-#define S4_2_Pin GPIO_PIN_6
-#define S4_2_GPIO_Port GPIOD
+#define S4_2_Pin GPIO_PIN_3
+#define S4_2_GPIO_Port GPIOB
 #define LED_R_Pin GPIO_PIN_7
 #define LED_R_GPIO_Port GPIOD
-#define S4_1_Pin GPIO_PIN_3
-#define S4_1_GPIO_Port GPIOB
-#define S5_2_Pin GPIO_PIN_5
+#define S4_1_Pin GPIO_PIN_6
+#define S4_1_GPIO_Port GPIOD
+#define S5_2_Pin GPIO_PIN_7
 #define S5_2_GPIO_Port GPIOB
 #define Audio_SCL_Pin GPIO_PIN_6
 #define Audio_SCL_GPIO_Port GPIOB
-#define S5_1_Pin GPIO_PIN_7
+#define S5_1_Pin GPIO_PIN_5
 #define S5_1_GPIO_Port GPIOB
 #define S2_2_Pin GPIO_PIN_8
 #define S2_2_GPIO_Port GPIOB

@@ -69,8 +69,18 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PCPin PCPin PCPin */
-  GPIO_InitStruct.Pin = S0_Pin|JOY_RIGHT_BTN2_Pin|NRF_IRQ_Pin;
+  /*Configure GPIO pin : S0 as EXTI interrupt (both edges) */
+  GPIO_InitStruct.Pin = S0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(S0_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI0 interrupt - highest priority for emergency switch */
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  /*Configure GPIO pins : PCPin PCPin */
+  GPIO_InitStruct.Pin = JOY_RIGHT_BTN2_Pin|NRF_IRQ_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -99,7 +109,7 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : PBPin PBPin PBPin PBPin
                            PBPin PBPin PBPin */
-  GPIO_InitStruct.Pin = JOY_RIGHT_BTN1_Pin|BOOT1_Pin|LORA_M0_Pin|S4_1_Pin
+  GPIO_InitStruct.Pin = JOY_RIGHT_BTN1_Pin|BOOT1_Pin|LORA_M0_Pin|S4_2_Pin
                           |S5_2_Pin|S5_1_Pin|S2_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -130,11 +140,11 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF6_SPI3;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PtPin */
-  GPIO_InitStruct.Pin = S4_2_Pin;
+  /*Configure GPIO pin : S4_1 on GPIOD */
+  GPIO_InitStruct.Pin = S4_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(S4_2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(S4_1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PtPin */
   GPIO_InitStruct.Pin = Audio_SCL_Pin;
@@ -161,8 +171,8 @@ void MX_GPIO_ConfigureSwitchPullDown(void)
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-    // GPIOC switches: S0, JOY_RIGHT_BTN2
-    GPIO_InitStruct.Pin = S0_Pin | JOY_RIGHT_BTN2_Pin;
+    // GPIOC switches: JOY_RIGHT_BTN2 (S0 is now EXTI, configured in MX_GPIO_Init)
+    GPIO_InitStruct.Pin = JOY_RIGHT_BTN2_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -173,16 +183,16 @@ void MX_GPIO_ConfigureSwitchPullDown(void)
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-    // GPIOB switches: JOY_RIGHT_BTN1, S2_2, S4_1, S5_1, S5_2
-    GPIO_InitStruct.Pin = JOY_RIGHT_BTN1_Pin | S4_1_Pin | S5_2_Pin | S5_1_Pin | S2_2_Pin;
+    // GPIOB switches: JOY_RIGHT_BTN1, S2_2, S4_2, S5_1, S5_2
+    GPIO_InitStruct.Pin = JOY_RIGHT_BTN1_Pin | S4_2_Pin | S5_2_Pin | S5_1_Pin | S2_2_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    // GPIOD switch: S4_2
-    GPIO_InitStruct.Pin = S4_2_Pin;
+    // GPIOD switch: S4_1
+    GPIO_InitStruct.Pin = S4_1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-    HAL_GPIO_Init(S4_2_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(S4_1_GPIO_Port, &GPIO_InitStruct);
 }
 /* USER CODE END 2 */

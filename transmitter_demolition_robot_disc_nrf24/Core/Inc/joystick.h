@@ -41,11 +41,13 @@ extern "C" {
 
 /* Exported variables --------------------------------------------------------*/
 extern uint16_t adc_buffer[ADC_CHANNELS];
+extern int8_t joy_cal_offset[4];  // Calibration offset per axis (LX, LY, RY, RX)
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Joystick_Init(void);
 void Joystick_Read(Joystick_Data_t* data);
 void Joystick_StartDMA(void);
+void Joystick_Calibrate(void);
 
 #ifdef __cplusplus
 }

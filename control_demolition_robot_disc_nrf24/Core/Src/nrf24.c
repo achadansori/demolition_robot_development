@@ -180,7 +180,7 @@ bool NRF24_Configure(void)
     // Configure address width: 5 bytes
     NRF24_WriteRegister(NRF24_REG_SETUP_AW, 0x03);
 
-    // Disable Auto-ACK (same as working loopback test)
+    // Disable Auto-ACK (prevents SPI busy-wait that disturbs ADC DMA)
     NRF24_WriteRegister(NRF24_REG_EN_AA, 0x00);
 
     // Enable RX pipe 0

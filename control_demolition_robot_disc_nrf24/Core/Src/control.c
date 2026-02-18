@@ -89,27 +89,30 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     // ========================================================================
     // EMERGENCY MODE - S0 = 0 (HIGHEST PRIORITY!)
     // ========================================================================
-    // S0 = 0: Emergency stop - PB8 LOW, all PWM outputs to 0%
-    // S0 = 1: Normal operation - PB8 HIGH
-    // This check is at the very top to ensure emergency has absolute priority
-
     if (lora_data->s0 == 0)
     {
-        // Emergency mode activated!
-        // Set PB8 LOW for emergency signal
         GPIOB->BSRR = (1<<(8+16)); // BR8 = reset PB8 to LOW
-
-        // Stop all PWM outputs immediately
-        //PWM_StopAll();
-
-        // Force PE6 (motor starter) to LOW during emergency
+        PWM_StopAll();
         GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
-
+        GPIO_SetTool1(0);
+        return;  // Exit immediately - no further processing
     }
     else
     {
-        // Normal operation - set PB8 HIGH
         GPIOB->BSRR = (1<<8);      // BS8 = set PB8 to HIGH
+    }
+
+    // ========================================================================
+    // SLEEP MODE - motor_active = 0 (ALL PWM = 0)
+    // ========================================================================
+    // When transmitter is in sleep mode or motor not yet started,
+    // all PWM outputs must be 0 for safety
+    if (lora_data->motor_active == 0)
+    {
+        PWM_StopAll();
+        GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
+        GPIO_SetTool1(0);
+        return;  // Exit immediately - no further processing
     }
 
     // ========================================================================

@@ -273,4 +273,33 @@ void OTG_FS_IRQHandler(void)
 
 /* USER CODE BEGIN 1 */
 
+/**
+  * @brief This function handles EXTI line0 interrupt (S0 emergency switch on PC0).
+  */
+void EXTI0_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
+}
+
+/**
+  * @brief  EXTI callback - called when S0 pin changes state
+  */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == GPIO_PIN_0)
+  {
+    // Read current S0 state: 0 = emergency, 1 = normal
+    if (HAL_GPIO_ReadPin(S0_GPIO_Port, S0_Pin) == GPIO_PIN_RESET)
+    {
+      s0_emergency_flag = 1;  // Emergency activated
+      // Immediately turn on red LED
+      HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_SET);
+    }
+    else
+    {
+      s0_emergency_flag = 0;  // Emergency released
+    }
+  }
+}
+
 /* USER CODE END 1 */

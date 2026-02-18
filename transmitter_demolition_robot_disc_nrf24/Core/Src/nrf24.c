@@ -261,7 +261,7 @@ bool NRF24_Configure(void)
     NRF24_WriteRegister(NRF24_REG_CONFIG, 0x00);
     HAL_Delay(5);
 
-    // 2. Disable Auto-ACK (same as working loopback test)
+    // 2. Disable Auto-ACK (prevents SPI busy-wait that disturbs ADC DMA)
     NRF24_WriteRegister(NRF24_REG_EN_AA, 0x00);
 
     // 3. Enable RX pipe 0

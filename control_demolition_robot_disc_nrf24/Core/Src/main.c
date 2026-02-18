@@ -292,8 +292,6 @@ int main(void)
     else
     {
       no_data_count++;
-      // No timeout - reset counter
-      timeout_noise_counter = 0;
     }
 
     // Diagnostic output every 1 second
@@ -360,6 +358,13 @@ int main(void)
         {
           pwm_backup[i] = PWM_GetDutyCycle((PWM_Channel_t)i);
         }
+
+        // Reset nrf24_data to safe defaults (joystick center, all switches OFF)
+        memset(&nrf24_data, 0, sizeof(nrf24_data));
+        nrf24_data.joy_left_x  = 127;
+        nrf24_data.joy_left_y  = 127;
+        nrf24_data.joy_right_x = 127;
+        nrf24_data.joy_right_y = 127;
 
         // ENTER SLEEP MODE: Set PE6 to LOW
         GPIOE->BSRR = (1<<(6+16));  // BR6 = reset PE6 to LOW
