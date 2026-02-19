@@ -134,10 +134,10 @@ void Error_Handler(void);
 #define NRF_IRQ_GPIO_Port GPIOE
 
 // Motor Starter Control (Digital GPIO Output on PE6)
-// Controlled by S1_1 hold AND sleep mode:
-// - Sleep mode → PE6 = LOW (forced in main.c)
-// - S1_1 = 1 (hold) → PE6 = HIGH (in control.c)
-// - Otherwise → PE6 = LOW
+// Controlled by motor_active flag from transmitter:
+// - motor_active = 1 → PE6 = HIGH (in control.c)
+// - motor_active = 0 → PE6 = LOW
+// - Emergency (S0=0) or Sleep mode → PE6 = LOW (forced)
 #define MOTOR_STARTER_Pin GPIO_PIN_6
 #define MOTOR_STARTER_GPIO_Port GPIOE
 

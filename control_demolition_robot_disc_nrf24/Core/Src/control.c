@@ -527,15 +527,14 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     // ========================================================================
     // PE6 (MOTOR STARTER) - GPIO CONTROL
     // ========================================================================
-    // Motor starter controlled by S1_1 hold
-    // - S1_1 = 1 (hold) → PE6 = HIGH
-    // - Otherwise → PE6 = LOW
-    // Note: PE6 is forced LOW during sleep mode in main.c
+    // Motor starter controlled by motor_active flag from transmitter
+    // - motor_active = 1 → PE6 = HIGH (motor ON)
+    // - motor_active = 0 → PE6 = LOW  (motor OFF)
+    // Note: PE6 is also forced LOW during emergency (S0=0) and sleep mode
 
-    if (lora_data->s1_1 == 1)
+    if (lora_data->motor_active == 1)
     {
         GPIOE->BSRR = (1<<6);      // BS6 = set PE6 to HIGH
-
     }
     else
     {

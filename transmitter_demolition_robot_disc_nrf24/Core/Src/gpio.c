@@ -171,7 +171,7 @@ void MX_GPIO_ConfigureSwitchPullDown(void)
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-    // GPIOC switches: JOY_RIGHT_BTN2 (S0 is now EXTI, configured in MX_GPIO_Init)
+    // GPIOC switches: JOY_RIGHT_BTN2 (S0 moved to PB0, configured as EXTI in MX_GPIO_Init)
     GPIO_InitStruct.Pin = JOY_RIGHT_BTN2_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;

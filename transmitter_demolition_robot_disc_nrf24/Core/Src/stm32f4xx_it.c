@@ -274,7 +274,7 @@ void OTG_FS_IRQHandler(void)
 /* USER CODE BEGIN 1 */
 
 /**
-  * @brief This function handles EXTI line0 interrupt (S0 emergency switch on PC0).
+  * @brief This function handles EXTI line0 interrupt (S0 emergency switch on PB0).
   */
 void EXTI0_IRQHandler(void)
 {

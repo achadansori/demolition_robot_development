@@ -70,7 +70,7 @@ extern volatile uint8_t s0_emergency_flag;  // Set by EXTI0 interrupt when S0=0
 #define PH1_OSC_OUT_Pin GPIO_PIN_1
 #define PH1_OSC_OUT_GPIO_Port GPIOH
 #define S0_Pin GPIO_PIN_0
-#define S0_GPIO_Port GPIOC
+#define S0_GPIO_Port GPIOB
 #define JOY_LEFT_Y_Pin GPIO_PIN_1
 #define JOY_LEFT_Y_GPIO_Port GPIOC
 #define JOY_LEFT_X_Pin GPIO_PIN_3
