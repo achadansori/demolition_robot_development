@@ -359,8 +359,8 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
     switch(channel)
     {
         // TIM8 channels
-        case PWM_1_BRAKE:           TIM8->CCR1 = ccr_value; break;  // PC6
-        case PWM_2_CYLINDER_1_ON:   TIM8->CCR2 = ccr_value; break;  // PC7
+        case PWM_1_CYLINDER_1_OUT:  TIM8->CCR1 = ccr_value; break;  // PC6
+        case PWM_2_CYLINDER_1_IN:   TIM8->CCR2 = ccr_value; break;  // PC7
         case PWM_3_CYLINDER_2_OUT:  TIM8->CCR4 = ccr_value; break;  // PC9
         case PWM_10_TOOL_2:         TIM8->CCR3 = ccr_value; break;  // PC8
 
