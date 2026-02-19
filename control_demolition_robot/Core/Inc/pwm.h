@@ -32,8 +32,8 @@ extern "C" {
 
 /* PWM Channel Definitions ---------------------------------------------------*/
 typedef enum {
-    PWM_1_CYLINDER_1_OUT = 0,      // TIM8_CH1 (PC6) - Cylinder 1 OUT (joy_right_btn1 + joystick)
-    PWM_2_CYLINDER_1_IN,           // TIM8_CH2 (PC7) - Cylinder 1 IN (joy_right_btn1 + joystick)
+    PWM_1_BRAKE = 0,               // TIM8_CH1 (PC6) - Brake (always ON 100% in UPPER mode)
+    PWM_2_CYLINDER_1_ON,           // TIM8_CH2 (PC7) - Cylinder 1 ON valve (joy_right_btn1 toggle)
     PWM_3_CYLINDER_2_OUT,          // TIM8_CH4 (PC9)
     PWM_4_CYLINDER_2_IN,           // TIM3_CH2 (PB5)
     PWM_5_CYLINDER_3_OUT,          // TIM2_CH2 (PA1)

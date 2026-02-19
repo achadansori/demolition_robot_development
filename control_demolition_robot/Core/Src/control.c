@@ -29,8 +29,8 @@ typedef struct {
 
 // PWM limits for each output - indexed by PWM channel enum
 static PWM_Limits_t pwm_limits[20] = {
-    [PWM_1_CYLINDER_1_OUT]           = {40, 60},  // Cylinder 1 OUT
-    [PWM_2_CYLINDER_1_IN]            = {40, 60},  // Cylinder 1 IN
+    [PWM_1_BRAKE]                    = {0, 100},  // Brake (always 100% in UPPER mode)
+    [PWM_2_CYLINDER_1_ON]            = {0, 100},  // Cylinder 1 ON valve (digital ON/OFF)
     [PWM_3_CYLINDER_2_OUT]           = {40, 55},  // Cylinder 2 OUT
     [PWM_4_CYLINDER_2_IN]            = {40, 50},  // Cylinder 2 IN
     [PWM_5_CYLINDER_3_OUT]           = {42, 65},  // Cylinder 3 OUT (Bucket)
@@ -92,20 +92,29 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     if (lora_data->s0 == 0)
     {
         // Emergency mode activated!
-        // Set PB8 LOW for emergency signal
         GPIOB->BSRR = (1<<(8+16)); // BR8 = reset PB8 to LOW
-
-        // Stop all PWM outputs immediately
-        //PWM_StopAll();
-
-        // Force PE6 (motor starter) to LOW during emergency
+        PWM_StopAll();
         GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
-
+        GPIO_SetTool1(0);
+        return;  // Exit immediately - no further processing
     }
     else
     {
         // Normal operation - set PB8 HIGH
         GPIOB->BSRR = (1<<8);      // BS8 = set PB8 to HIGH
+    }
+
+    // ========================================================================
+    // SLEEP MODE - motor_active = 0 (ALL PWM = 0)
+    // ========================================================================
+    // When transmitter is in sleep mode or motor not yet started,
+    // all PWM outputs must be 0 for safety
+    if (lora_data->motor_active == 0)
+    {
+        PWM_StopAll();
+        GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
+        GPIO_SetTool1(0);
+        return;  // Exit immediately - no further processing
     }
 
     // ========================================================================
@@ -124,6 +133,25 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     // ========================================================================
     if (mode_upper)
     {
+        // --------------------------------------------------------------------
+        // BRAKE CONTROL - Always ON in UPPER mode (100% PWM)
+        // --------------------------------------------------------------------
+        PWM_SetDutyCycle(PWM_1_BRAKE, 100);
+
+        // --------------------------------------------------------------------
+        // CYLINDER_1_ON - Controlled by joy_right_btn1
+        // --------------------------------------------------------------------
+        // Valve solenoid parallel between cylinder 1 and 2
+        // This valve controls access to cylinder 1
+        if (lora_data->joy_right_btn1 == 1)
+        {
+            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 100);  // Open valve
+        }
+        else
+        {
+            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);    // Close valve
+        }
+
         // --------------------------------------------------------------------
         // LEFT STICK Y-AXIS: CYLINDER 3 (Bucket)
         // --------------------------------------------------------------------
@@ -179,70 +207,29 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // RIGHT STICK Y-AXIS: CYLINDER 2 or CYLINDER 1
+        // RIGHT STICK Y-AXIS: CYLINDER 2
         // --------------------------------------------------------------------
-        // Normal mode (joy_right_btn2 = 0): Control Cylinder 2
-        //   joy_right_y: 127→0   = Cylinder 2 OUT (PWM_3) 0→100%
-        //                127→255 = Cylinder 2 IN  (PWM_4) 0→100%
-        // Cylinder 1 mode (joy_right_btn2 = 1): Control Cylinder 1
-        //   joy_right_y: 127→0   = Cylinder 1 IN  (PWM_2) 0→100%
-        //                127→255 = Cylinder 1 OUT (PWM_1) 0→100%
-
-        bool cylinder_1_mode = (lora_data->joy_right_btn2 == 1);
+        // joy_right_y: 127→0   = Cylinder 2 OUT (PWM_3) 0→100%
+        //              127→255 = Cylinder 2 IN  (PWM_4) 0→100%
+        // Note: Cylinder 1 is now controlled by CYLINDER_1_ON valve (joy_right_btn1)
 
         if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
         {
-            // Stick DOWN (0-117)
-            if (cylinder_1_mode)
-            {
-                // Cylinder 1 mode: Stick DOWN → Cylinder 1 IN
-                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_2_CYLINDER_1_IN);
-                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, pwm_value);
-                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-                // Stop Cylinder 2
-                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
-                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
-            }
-            else
-            {
-                // Normal: Stick DOWN → Cylinder 2 OUT
-                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_3_CYLINDER_2_OUT);
-                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
-                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
-                // Stop Cylinder 1
-                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
-            }
+            // Stick DOWN (0-117) → Cylinder 2 OUT
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_3_CYLINDER_2_OUT);
+            PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
+            PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         }
         else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
         {
-            // Stick UP (137-255)
-            if (cylinder_1_mode)
-            {
-                // Cylinder 1 mode: Stick UP → Cylinder 1 OUT
-                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_1_CYLINDER_1_OUT);
-                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, pwm_value);
-                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
-                // Stop Cylinder 2
-                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
-                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
-            }
-            else
-            {
-                // Normal: Stick UP → Cylinder 2 IN
-                uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_4_CYLINDER_2_IN);
-                PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
-                PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
-                // Stop Cylinder 1
-                PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-                PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
-            }
+            // Stick UP (137-255) → Cylinder 2 IN
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_4_CYLINDER_2_IN);
+            PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
+            PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
         }
         else
         {
-            // Deadzone - stop all
-            PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-            PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+            // Deadzone - stop both
             PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
             PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         }
@@ -430,8 +417,8 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // Stop all excavator controls in LOWER mode
-        PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-        PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+        PWM_SetDutyCycle(PWM_1_BRAKE, 0);
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);
         PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
         PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
@@ -499,8 +486,8 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
         }
 
         // Stop all excavator controls in DUAL mode
-        PWM_SetDutyCycle(PWM_1_CYLINDER_1_OUT, 0);
-        PWM_SetDutyCycle(PWM_2_CYLINDER_1_IN, 0);
+        PWM_SetDutyCycle(PWM_1_BRAKE, 0);
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);
         PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
         PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
         PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
@@ -520,12 +507,12 @@ void Control_Update(LoRa_ReceivedData_t *lora_data)
     // ========================================================================
     // PE6 (MOTOR STARTER) - GPIO CONTROL
     // ========================================================================
-    // Motor starter controlled by S1_1 hold
-    // - S1_1 = 1 (hold) → PE6 = HIGH
-    // - Otherwise → PE6 = LOW
-    // Note: PE6 is forced LOW during sleep mode in main.c
+    // Motor starter controlled by motor_active flag
+    // - motor_active = 1 → PE6 = HIGH (motor started via S2_1)
+    // - motor_active = 0 → PE6 = LOW
+    // Note: PE6 is forced LOW during emergency (S0=0) and sleep mode
 
-    if (lora_data->s1_1 == 1)
+    if (lora_data->motor_active == 1)
     {
         GPIOE->BSRR = (1<<6);      // BS6 = set PE6 to HIGH
 
