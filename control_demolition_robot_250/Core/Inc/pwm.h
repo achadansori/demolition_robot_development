@@ -5,16 +5,17 @@
   *                   Uses TIM1, TIM2, TIM3, TIM4, TIM8, TIM9
   *
   * @note           PWM Configuration for Hydraulic Proportional Valves:
-  *                 - Frequency: 1kHz (1ms period) - OPTIMAL for solenoid valves
+  *                 - Frequency: CONFIGURABLE in pwm.c (default: 100Hz / 10ms period)
   *                 - Duty Cycle: 0-100% maps to 0-3.3V average
   *                 - Register-based implementation for direct hardware control
   *                 - Each channel drives TIP122 base through resistor
   *
-  * @note           Why 1kHz?
-  *                 - Proportional solenoid valves respond best at 200Hz-2kHz
-  *                 - 1kHz is sweet spot: smooth control + fast response
-  *                 - Lower than 10kHz = less heat, longer valve life
-  *                 - No buzzing/chattering noise
+  * @note           Frequency Configuration (in pwm.c):
+  *                 - Change PWM_FREQUENCY_HZ define to adjust solenoid response
+  *                 - Lower frequency (50-100Hz) prevents sticking at low duty cycles
+  *                 - Higher frequency (500-1000Hz) gives faster, more precise control
+  *                 - Current: 100Hz - good balance for preventing solenoid sticking
+  *                 - Valid range: 50Hz-2kHz (proportional valve operating range)
   ******************************************************************************
   */
 
@@ -31,8 +32,8 @@ extern "C" {
 
 /* PWM Channel Definitions ---------------------------------------------------*/
 typedef enum {
-    PWM_1_BRAKE = 0,               // TIM8_CH1 (PC6) - Brake control (100% in UPPER mode)
-    PWM_2_CYLINDER_1_ON,           // TIM8_CH2 (PC7) - Cylinder 1 valve ON (controlled by joy_right_btn1)
+    PWM_1_BRAKE = 0,               // TIM8_CH1 (PC6) - Brake (always ON 100% in UPPER mode)
+    PWM_2_CYLINDER_1_ON,           // TIM8_CH2 (PC7) - Cylinder 1 ON valve (joy_right_btn1 toggle)
     PWM_3_CYLINDER_2_OUT,          // TIM8_CH4 (PC9)
     PWM_4_CYLINDER_2_IN,           // TIM3_CH2 (PB5)
     PWM_5_CYLINDER_3_OUT,          // TIM2_CH2 (PA1)
@@ -51,8 +52,7 @@ typedef enum {
     PWM_18_TRACK_RIGHT_BACKWARD,   // TIM1_CH3 (PE13)
     PWM_19_TRACK_LEFT_FORWARD,     // TIM4_CH2 (PD13)
     PWM_20_TRACK_LEFT_BACKWARD,    // TIM1_CH4 (PE14)
-    PWM_21_MOTOR_STARTER,          // TIM9_CH2 (PE6) - Motor self-holding trigger
-    PWM_CHANNEL_COUNT = 21
+    PWM_CHANNEL_COUNT = 20
 } PWM_Channel_t;
 
 /* Public function prototypes ------------------------------------------------*/
@@ -61,6 +61,9 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent);
 uint8_t PWM_GetDutyCycle(PWM_Channel_t channel);
 void PWM_Stop(PWM_Channel_t channel);
 void PWM_StopAll(void);
+
+/* GPIO Control for Tool 1 (digital trigger - ON/OFF) ------------------------*/
+void GPIO_SetTool1(uint8_t state);  // 0 = OFF, 1 = ON (PB1)
 
 #ifdef __cplusplus
 }
