@@ -23,7 +23,7 @@
 //   2000Hz+       - Too fast, TIP122 may overheat! ⚠️
 // Note: TIP122 max safe frequency ~5-10kHz, but 500Hz-1kHz optimal for efficiency
 // ============================================================================
-#define PWM_FREQUENCY_HZ    500    // <- OPTIMIZED for TIP122: Fast response + Safe switching
+#define PWM_FREQUENCY_HZ    150    // <- OPTIMIZED for TIP122: Fast response + Safe switching
 
 // ============================================================================
 // AUTO-CALCULATED VALUES (DO NOT MODIFY BELOW THIS LINE)

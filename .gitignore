@@ -15,11 +15,8 @@
 *.swp
 *.swo
 
-# IDE files
-.settings/
-.cproject
-.project
-*.launch
+# IDE files (.cproject/.project/.settings/*.launch are tracked so projects can be
+# built immediately after clone — only build outputs are ignored)
 
 # Debug directories (keep structure but ignore compiled artifacts)
 # Note: Debug folder structure is tracked, but build outputs are ignored

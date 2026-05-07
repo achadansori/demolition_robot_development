@@ -33,26 +33,26 @@ typedef struct {
 // causing them to stay ON even when PWM returns to 0%. Limiting to 90% max
 // ensures proper switching and prevents the "stuck ON" problem.
 static PWM_Limits_t pwm_limits[20] = {
-    [PWM_1_CYLINDER_1_OUT]           = {30, 60},  // Cylinder 1 OUT
-    [PWM_2_CYLINDER_1_IN]            = {30, 55},  // Cylinder 1 IN
-    [PWM_3_CYLINDER_2_OUT]           = {30, 55},  // Cylinder 2 OUT
-    [PWM_4_CYLINDER_2_IN]            = {20, 50},  // Cylinder 2 IN
-    [PWM_5_CYLINDER_3_OUT]           = {32, 70},  // Cylinder 3 OUT (Bucket)
-    [PWM_6_CYLINDER_3_IN]            = {32, 60},  // Cylinder 3 IN (Bucket)
-    [PWM_7_CYLINDER_4_OUT]           = {32, 60},  // Cylinder 4 OUT
-    [PWM_8_CYLINDER_4_IN]            = {32, 65},  // Cylinder 4 IN
-    [PWM_9_TOOL_1]                   = {0, 60},   // Tool 1 (Reserved) - max 60%
-    [PWM_10_TOOL_2]                  = {0, 50},   // Tool 2 (Reserved)
-    [PWM_11_SLEW_CW]                 = {25, 45},  // Slew CW
-    [PWM_12_SLEW_CCW]                = {25, 45},  // Slew CCW
-    [PWM_13_OUTRIGGER_LEFT_UP]       = {10, 70},  // Outrigger Left UP - max 70%
-    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {10, 70},  // Outrigger Left DOWN - max 70%
-    [PWM_15_OUTRIGGER_RIGHT_UP]      = {10, 70},  // Outrigger Right UP - max 70%
-    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {10, 70},  // Outrigger Right DOWN - max 70%
-    [PWM_17_TRACK_RIGHT_FORWARD]     = {11, 46},  // Track Right FORWARD
-    [PWM_18_TRACK_RIGHT_BACKWARD]    = {11, 46},  // Track Right BACKWARD
-    [PWM_19_TRACK_LEFT_FORWARD]      = {18, 53},  // Track Left FORWARD
-    [PWM_20_TRACK_LEFT_BACKWARD]     = {21, 66},  // Track Left BACKWARD
+    [PWM_1_CYLINDER_1_OUT]           = {20, 55},  // Cylinder 1 OUT
+    [PWM_2_CYLINDER_1_IN]            = {20, 55},  // Cylinder 1 IN
+    [PWM_3_CYLINDER_2_OUT]           = {20, 55},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {20, 55},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {20, 60},  // Cylinder 3 OUT
+    [PWM_6_CYLINDER_3_IN]            = {20, 60},  // Cylinder 3 IN
+    [PWM_7_CYLINDER_4_OUT]           = {20, 60},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {20, 60},  // Cylinder 4 IN
+    [PWM_9_TOOL_1]                   = {25, 60},  // Tool 1 (Reserved)
+    [PWM_10_TOOL_2]                  = {25, 60},  // Tool 2 (Reserved)
+    [PWM_11_SLEW_CW]                 = {25, 70},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {25, 65},  // Slew CCW
+    [PWM_13_OUTRIGGER_LEFT_UP]       = {25, 55},  // Outrigger Left UP
+    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {25, 55},  // Outrigger Left DOWN
+    [PWM_15_OUTRIGGER_RIGHT_UP]      = {25, 55},  // Outrigger Right UP
+    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {25, 55},  // Outrigger Right DOWN
+    [PWM_17_TRACK_RIGHT_FORWARD]     = {25, 55},  // Track Right FORWARD
+    [PWM_18_TRACK_RIGHT_BACKWARD]    = {25, 55},  // Track Right BACKWARD
+    [PWM_19_TRACK_LEFT_FORWARD]      = {25, 55},  // Track Left FORWARD
+    [PWM_20_TRACK_LEFT_BACKWARD]     = {25, 55},  // Track Left BACKWARD
 };
 
 /* Private variables - PWM smoothing -----------------------------------------*/
