@@ -388,8 +388,9 @@ void OLED_Init(I2C_HandleTypeDef *hi2c)
     OLED_WriteCommand(SSD1306_MEMORY_MODE);
     OLED_WriteCommand(0x00);  // Horizontal addressing mode
 
-    OLED_WriteCommand(SSD1306_SEG_REMAP | 0x01);  // Column address 127 mapped to SEG0
-    OLED_WriteCommand(SSD1306_COM_SCAN_DEC);      // Scan from COM[N-1] to COM0
+    // Flipped 180° to match upside-down mechanical mounting
+    OLED_WriteCommand(SSD1306_SEG_REMAP | 0x00);  // Column address 0 mapped to SEG0
+    OLED_WriteCommand(SSD1306_COM_SCAN_INC);      // Scan from COM0 to COM[N-1]
 
     OLED_WriteCommand(SSD1306_SET_COMPINS);
     OLED_WriteCommand(0x12);  // Alternative COM pin config, disable left/right remap
