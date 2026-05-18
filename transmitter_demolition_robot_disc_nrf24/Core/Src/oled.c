@@ -660,8 +660,8 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 {
     OLED_Clear();
 
-    // Extract battery percentage from joystick_data (index 5)
-    uint8_t battery_percent = joystick_data[5];
+    // Extract battery percentage from joystick_data (index 4 = battery_percent field)
+    uint8_t battery_percent = joystick_data[4];
 
     // ========================================================================
     // TOP BAR: Battery indicator

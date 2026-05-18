@@ -282,35 +282,24 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // BREAKER - 2 Valve Control
+        // BREAKER - 2 Valve Control (both digital, triggered by joy_left_btn2)
         // --------------------------------------------------------------------
-        // Valve 1 (GPIO PB1): ON/OFF digital trigger by joy_left_btn2
-        // Valve 2 (PWM_10): Flow control by R8 potentiometer (proportional)
+        // Valve 1 (GPIO PB1): ON/OFF digital
+        // Valve 2 (PWM_10):   ON = max duty, OFF = 0 (digital via PWM driver)
         //
-        // joy_left_btn2 = 1 → Breaker ON (PB1 = HIGH)
-        // joy_left_btn2 = 0 → Breaker OFF (PB1 = LOW)
-        // R8: 0-255 → PWM_10: min-max% (respects pwm_limits)
+        // joy_left_btn2 = 1 → both valves ON
+        // joy_left_btn2 = 0 → both valves OFF
 
         if (lora_data->joy_left_btn2 == 1)
         {
-            GPIO_SetTool1(1);  // Valve 1: Breaker ON (digital HIGH)
+            GPIO_SetTool1(1);                                            // Valve 1 ON
+            PWM_SetDutyCycle(PWM_10_TOOL_2, pwm_limits[PWM_10_TOOL_2].max);  // Valve 2 ON
         }
         else
         {
-            GPIO_SetTool1(0);  // Valve 1: Breaker OFF (digital LOW)
+            GPIO_SetTool1(0);                          // Valve 1 OFF
+            PWM_SetDutyCycle(PWM_10_TOOL_2, 0);        // Valve 2 OFF
         }
-
-        // Valve 2: Flow control (proportional from R8)
-        // R8 range: 0-255 → PWM range: min-max% (respects pwm_limits)
-        uint8_t breaker_flow_raw = (lora_data->r8 * 100) / 255;
-        uint8_t breaker_flow = 0;
-        if (breaker_flow_raw > 0)
-        {
-            // Scale from 0-100% to min-max%
-            breaker_flow = pwm_limits[PWM_10_TOOL_2].min +
-                ((breaker_flow_raw * (pwm_limits[PWM_10_TOOL_2].max - pwm_limits[PWM_10_TOOL_2].min)) / 100);
-        }
-        PWM_SetDutyCycle(PWM_10_TOOL_2, breaker_flow);
 
         // Stop all mobility controls in UPPER mode
         PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);

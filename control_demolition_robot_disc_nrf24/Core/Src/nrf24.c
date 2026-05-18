@@ -294,8 +294,8 @@ bool NRF24_GetData(NRF24_ReceivedData_t *data)
     data->joy_left_y = payload[1];
     data->joy_right_x = payload[2];
     data->joy_right_y = payload[3];
-    data->r8 = payload[4];
-    data->r1 = payload[5];
+    data->battery_percent = payload[4];
+    data->reserved = payload[5];
 
     // Extract bit-packed switches from bytes 6-7
     uint16_t switches = (payload[7] << 8) | payload[6];

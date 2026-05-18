@@ -36,8 +36,8 @@ typedef struct {
     uint8_t s4_2;
     uint8_t s5_1;
     uint8_t s5_2;
-    uint16_t r1;
-    uint16_t r8;
+    uint8_t battery_percent;  // Battery level 0-100% from transmitter
+    uint8_t reserved;         // Reserved byte (was r1/r8 pots, now unused)
     uint8_t motor_active;
 } NRF24_ReceivedData_t;
 

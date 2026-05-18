@@ -31,24 +31,24 @@ typedef struct {
 static PWM_Limits_t pwm_limits[20] = {
     [PWM_1_BRAKE]                    = {0, 100},  // Brake (always 100% in UPPER mode)
     [PWM_2_CYLINDER_1_ON]            = {0, 100},  // Cylinder 1 ON valve (digital ON/OFF)
-    [PWM_3_CYLINDER_2_OUT]           = {40, 55},  // Cylinder 2 OUT
-    [PWM_4_CYLINDER_2_IN]            = {40, 50},  // Cylinder 2 IN
-    [PWM_5_CYLINDER_3_OUT]           = {42, 65},  // Cylinder 3 OUT (Bucket)
-    [PWM_6_CYLINDER_3_IN]            = {42, 60},  // Cylinder 3 IN (Bucket)
-    [PWM_7_CYLINDER_4_OUT]           = {42, 60},  // Cylinder 4 OUT
-    [PWM_8_CYLINDER_4_IN]            = {42, 60},  // Cylinder 4 IN
+    [PWM_3_CYLINDER_2_OUT]           = {30, 55},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {30, 50},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {30, 55},  // Cylinder 3 OUT (Bucket)
+    [PWM_6_CYLINDER_3_IN]            = {30, 55},  // Cylinder 3 IN (Bucket)
+    [PWM_7_CYLINDER_4_OUT]           = {30, 55},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {30, 55},  // Cylinder 4 IN
     [PWM_9_TOOL_1]                   = {0, 75},  // Tool 1 (Reserved)
     [PWM_10_TOOL_2]                  = {0, 60},  // Tool 2 (Reserved)
-    [PWM_11_SLEW_CW]                 = {35, 45},  // Slew CW
-    [PWM_12_SLEW_CCW]                = {35, 45},  // Slew CCW
+    [PWM_11_SLEW_CW]                 = {30, 50},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {30, 50},  // Slew CCW
     [PWM_13_OUTRIGGER_LEFT_UP]       = {30, 85},  // Outrigger Left UP
     [PWM_14_OUTRIGGER_LEFT_DOWN]     = {30, 85},  // Outrigger Left DOWN
     [PWM_15_OUTRIGGER_RIGHT_UP]      = {30, 85},  // Outrigger Right UP
     [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {30, 85},  // Outrigger Right DOWN
-    [PWM_17_TRACK_RIGHT_FORWARD]     = {31, 56},  // Track Right FORWARD
-    [PWM_18_TRACK_RIGHT_BACKWARD]    = {31, 56},  // Track Right BACKWARD
-    [PWM_19_TRACK_LEFT_FORWARD]      = {38, 63},  // Track Left FORWARD
-    [PWM_20_TRACK_LEFT_BACKWARD]     = {51, 76},  // Track Left BACKWARD
+    [PWM_17_TRACK_RIGHT_FORWARD]     = {30, 60},  // Track Right FORWARD
+    [PWM_18_TRACK_RIGHT_BACKWARD]    = {30, 60},  // Track Right BACKWARD
+    [PWM_19_TRACK_LEFT_FORWARD]      = {30, 60},  // Track Left FORWARD
+    [PWM_20_TRACK_LEFT_BACKWARD]     = {30, 60},  // Track Left BACKWARD
 };
 
 /* Private variables - PWM smoothing -----------------------------------------*/
@@ -262,35 +262,24 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         }
 
         // --------------------------------------------------------------------
-        // BREAKER - 2 Valve Control
+        // BREAKER - 2 Valve Control (both digital, triggered by joy_left_btn2)
         // --------------------------------------------------------------------
-        // Valve 1 (GPIO PB1): ON/OFF digital trigger by joy_left_btn2
-        // Valve 2 (PWM_10): Flow control by R8 potentiometer (proportional)
+        // Valve 1 (GPIO PB1): ON/OFF digital
+        // Valve 2 (PWM_10):   ON = max duty, OFF = 0 (digital via PWM driver)
         //
-        // joy_left_btn2 = 1 → Breaker ON (PB1 = HIGH)
-        // joy_left_btn2 = 0 → Breaker OFF (PB1 = LOW)
-        // R8: 0-255 → PWM_10: min-max% (respects pwm_limits)
+        // joy_left_btn2 = 1 → both valves ON
+        // joy_left_btn2 = 0 → both valves OFF
 
         if (lora_data->joy_left_btn2 == 1)
         {
-            GPIO_SetTool1(1);  // Valve 1: Breaker ON (digital HIGH)
+            GPIO_SetTool1(1);                                            // Valve 1 ON
+            PWM_SetDutyCycle(PWM_10_TOOL_2, pwm_limits[PWM_10_TOOL_2].max);  // Valve 2 ON
         }
         else
         {
-            GPIO_SetTool1(0);  // Valve 1: Breaker OFF (digital LOW)
+            GPIO_SetTool1(0);                          // Valve 1 OFF
+            PWM_SetDutyCycle(PWM_10_TOOL_2, 0);        // Valve 2 OFF
         }
-
-        // Valve 2: Flow control (proportional from R8)
-        // R8 range: 0-255 → PWM range: min-max% (respects pwm_limits)
-        uint8_t breaker_flow_raw = (lora_data->r8 * 100) / 255;
-        uint8_t breaker_flow = 0;
-        if (breaker_flow_raw > 0)
-        {
-            // Scale from 0-100% to min-max%
-            breaker_flow = pwm_limits[PWM_10_TOOL_2].min +
-                ((breaker_flow_raw * (pwm_limits[PWM_10_TOOL_2].max - pwm_limits[PWM_10_TOOL_2].min)) / 100);
-        }
-        PWM_SetDutyCycle(PWM_10_TOOL_2, breaker_flow);
 
         // Stop all mobility controls in UPPER mode
         PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
