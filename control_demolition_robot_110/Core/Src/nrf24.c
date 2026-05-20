@@ -180,8 +180,10 @@ bool NRF24_Configure(void)
     // Configure address width: 5 bytes
     NRF24_WriteRegister(NRF24_REG_SETUP_AW, 0x03);
 
-    // Disable Auto-ACK (prevents SPI busy-wait that disturbs ADC DMA)
-    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x00);
+    // Enable Auto-ACK on pipe 0 so the transmitter gets link-quality feedback.
+    // The hardware auto-generates the ACK in RX mode (no extra firmware/SPI load),
+    // so this does not add to the receive-loop work that feeds the ADC DMA.
+    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x01);
 
     // Enable RX pipe 0
     NRF24_WriteRegister(NRF24_REG_EN_RXADDR, 0x01);

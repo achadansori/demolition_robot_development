@@ -73,6 +73,23 @@ static bool nrf24_ready = false;
 static const uint8_t NRF24_ADDR[5] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};  // 5-byte address
 static const uint8_t NRF24_CHANNEL = 76;  // Channel 76 = 2476 MHz (avoid WiFi)
 
+// Link quality tracking - rolling window of recent TX results.
+// Each entry is a per-packet score (0 = lost, 100 = ACKed on first try).
+#define NRF24_LQ_WINDOW 16
+static uint8_t lq_scores[NRF24_LQ_WINDOW] = {0};
+static uint8_t lq_index = 0;
+static uint16_t lq_sum = 0;
+static uint8_t lq_count = 0;
+
+static void NRF24_LQ_Push(uint8_t score)
+{
+    lq_sum -= lq_scores[lq_index];
+    lq_scores[lq_index] = score;
+    lq_sum += score;
+    lq_index = (uint8_t)((lq_index + 1) % NRF24_LQ_WINDOW);
+    if (lq_count < NRF24_LQ_WINDOW) lq_count++;
+}
+
 /* Private function prototypes -----------------------------------------------*/
 static void NRF24_CSN_LOW(void);
 static void NRF24_CSN_HIGH(void);
@@ -261,8 +278,10 @@ bool NRF24_Configure(void)
     NRF24_WriteRegister(NRF24_REG_CONFIG, 0x00);
     HAL_Delay(5);
 
-    // 2. Disable Auto-ACK (prevents SPI busy-wait that disturbs ADC DMA)
-    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x00);
+    // 2. Enable Auto-ACK on pipe 0 - needed so the TX learns whether the
+    //    robot actually received each packet (basis for link-quality bars).
+    //    The paired receiver MUST also have Auto-ACK enabled on pipe 0.
+    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x01);
 
     // 3. Enable RX pipe 0
     NRF24_WriteRegister(NRF24_REG_EN_RXADDR, 0x01);
@@ -270,8 +289,10 @@ bool NRF24_Configure(void)
     // 4. 5-byte address width
     NRF24_WriteRegister(NRF24_REG_SETUP_AW, 0x03);
 
-    // 5. No retransmit (auto-ack disabled)
-    NRF24_WriteRegister(NRF24_REG_SETUP_RETR, 0x00);
+    // 5. Auto-retransmit: 500us delay, up to 2 retries (ARD=1, ARC=2).
+    //    Kept small to bound the SendBinary busy-wait when the link is weak,
+    //    while still giving graded link-quality info via ARC_CNT.
+    NRF24_WriteRegister(NRF24_REG_SETUP_RETR, 0x12);
 
     // 6. Set RF channel
     NRF24_WriteRegister(NRF24_REG_RF_CH, NRF24_CHANNEL);
@@ -343,21 +364,28 @@ bool NRF24_SendBinary(const uint8_t* data, uint16_t size)
             // Clear flags
             NRF24_WriteRegister(NRF24_REG_STATUS, status & 0x70);
 
-            // Check if successful
+            // Check if successful (ACK received within the retry budget)
             if (status & NRF24_STATUS_TX_DS)
             {
+                // Grade the link by how many retransmits this packet needed.
+                // OBSERVE_TX bits[3:0] = ARC_CNT: fewer retries = stronger link.
+                uint8_t arc = NRF24_ReadRegister(NRF24_REG_OBSERVE_TX) & 0x0F;
+                uint8_t score = (arc == 0) ? 100 : (arc == 1) ? 70 : 40;
+                NRF24_LQ_Push(score);
                 return true;  // Success!
             }
             else
             {
-                // Max retries reached, flush TX FIFO
+                // Max retries reached: packet lost. Flush TX FIFO.
+                NRF24_LQ_Push(0);
                 NRF24_SendCommand(NRF24_CMD_FLUSH_TX);
                 return false;
             }
         }
     }
 
-    // Timeout - flush TX FIFO
+    // Timeout - treat as lost, flush TX FIFO
+    NRF24_LQ_Push(0);
     NRF24_SendCommand(NRF24_CMD_FLUSH_TX);
     return false;
 }
@@ -401,4 +429,16 @@ bool NRF24_IsReady(void)
 uint8_t NRF24_GetStatus(void)
 {
     return NRF24_SendCommand(NRF24_CMD_NOP);
+}
+
+/**
+  * @brief  Get rolling link quality (0-100) from recent ACK results.
+  *         100 = every recent packet ACKed on first try (strong link);
+  *         0   = no ACKs at all (robot off or out of range).
+  * @retval Link quality percentage (0-100)
+  */
+uint8_t NRF24_GetLinkQuality(void)
+{
+    if (lq_count == 0) return 0;
+    return (uint8_t)(lq_sum / lq_count);
 }

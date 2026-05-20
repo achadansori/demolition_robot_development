@@ -33,18 +33,18 @@ typedef struct {
 // causing them to stay ON even when PWM returns to 0%. Limiting to 90% max
 // ensures proper switching and prevents the "stuck ON" problem.
 static PWM_Limits_t pwm_limits[20] = {
-    [PWM_1_CYLINDER_1_OUT]           = {20, 55},  // Cylinder 1 OUT
-    [PWM_2_CYLINDER_1_IN]            = {20, 55},  // Cylinder 1 IN
-    [PWM_3_CYLINDER_2_OUT]           = {20, 55},  // Cylinder 2 OUT
-    [PWM_4_CYLINDER_2_IN]            = {20, 55},  // Cylinder 2 IN
-    [PWM_5_CYLINDER_3_OUT]           = {20, 60},  // Cylinder 3 OUT
-    [PWM_6_CYLINDER_3_IN]            = {20, 60},  // Cylinder 3 IN
-    [PWM_7_CYLINDER_4_OUT]           = {20, 60},  // Cylinder 4 OUT
-    [PWM_8_CYLINDER_4_IN]            = {20, 60},  // Cylinder 4 IN
-    [PWM_9_TOOL_1]                   = {25, 60},  // Tool 1 (Reserved)
-    [PWM_10_TOOL_2]                  = {25, 60},  // Tool 2 (Reserved)
-    [PWM_11_SLEW_CW]                 = {25, 70},  // Slew CW
-    [PWM_12_SLEW_CCW]                = {25, 65},  // Slew CCW
+    [PWM_1_CYLINDER_1_OUT]           = {20, 75},  // Cylinder 1 OUT
+    [PWM_2_CYLINDER_1_IN]            = {20, 75},  // Cylinder 1 IN
+    [PWM_3_CYLINDER_2_OUT]           = {20, 75},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {20, 75},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {20, 75},  // Cylinder 3 OUT
+    [PWM_6_CYLINDER_3_IN]            = {20, 75},  // Cylinder 3 IN
+    [PWM_7_CYLINDER_4_OUT]           = {20, 75},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {20, 75},  // Cylinder 4 IN
+    [PWM_9_TOOL_1]                   = {25, 75},  // Tool 1 (Reserved)
+    [PWM_10_TOOL_2]                  = {0, 50},   // Tool 2 (Reserved)
+    [PWM_11_SLEW_CW]                 = {25, 75},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {25, 55},  // Slew CCW
     [PWM_13_OUTRIGGER_LEFT_UP]       = {25, 55},  // Outrigger Left UP
     [PWM_14_OUTRIGGER_LEFT_DOWN]     = {25, 55},  // Outrigger Left DOWN
     [PWM_15_OUTRIGGER_RIGHT_UP]      = {25, 55},  // Outrigger Right UP

@@ -33,6 +33,7 @@ bool NRF24_SendBinary(const uint8_t* data, uint16_t size);
 bool NRF24_IsConnected(void);
 bool NRF24_IsReady(void);
 uint8_t NRF24_GetStatus(void);
+uint8_t NRF24_GetLinkQuality(void);  // Rolling link quality 0-100 from ACK results
 
 #ifdef __cplusplus
 }
