@@ -73,6 +73,7 @@ void Debug_Printf(const char* format, ...);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 volatile uint8_t s0_emergency_flag = 0;  // Set by EXTI0 ISR when S0 = 0
+volatile uint8_t clock_source_is_hsi = 0;  // 1 if HSE failed and HSI fallback is active
 /* USER CODE END 0 */
 
 /**
@@ -128,14 +129,21 @@ int main(void)
   // Debug: Send startup message
   Debug_Printf("\r\n=== Transmitter Demolition Robot (NRF24 + Discovery) ===\r\n");
   HAL_Delay(10);
-  Debug_Printf("System Clock: 84 MHz, USB CDC Ready\r\n\r\n");
+  if (clock_source_is_hsi)
+  {
+      Debug_Printf("System Clock: 84 MHz (HSI fallback - HSE failed)\r\n\r\n");
+  }
+  else
+  {
+      Debug_Printf("System Clock: 84 MHz (HSE), USB CDC Ready\r\n\r\n");
+  }
   HAL_Delay(10);
 
   // Debug counter for periodic status output
   uint16_t debug_counter = 0;
   #define DEBUG_INTERVAL 200  // Print debug every 200 cycles (~1s at fast loop)
 
-  // TX diagnostics
+  // TX diagnostics`
   uint32_t tx_ok_count = 0;
   uint32_t tx_fail_count = 0;
   uint32_t tx_not_ready = 0;
@@ -256,8 +264,8 @@ int main(void)
     {
         debug_counter = 0;
         Debug_PrintTxData(&tx_data);  // Print RAW values here, before override
-        Debug_Printf("  NRF: ST=0x%02X | OK=%lu FAIL=%lu NRDY=%lu\r\n",
-            NRF24_GetStatus(), tx_ok_count, tx_fail_count, tx_not_ready);
+        Debug_Printf("  NRF: ST=0x%02X | OK=%lu FAIL=%lu NRDY=%lu | LQ=%u%%\r\n",
+            NRF24_GetStatus(), tx_ok_count, tx_fail_count, tx_not_ready, NRF24_GetLinkQuality());
     }
 
     // ========================================================================
@@ -268,11 +276,25 @@ int main(void)
 
     if (s0_emergency_flag)
     {
-        // S0 = 0 - EMERGENCY MODE (only update OLED once on transition)
-        if (last_s0_state != 0)
+        // S0 = 0 - EMERGENCY MODE
+        // First emergency after boot: just clear (avoid any text-render error
+        // before OLED is fully exercised). Subsequent emergencies show text.
+        // Re-draw periodically (every ~20 loops) so an I2C glitch self-recovers.
+        static uint8_t emergency_redraw_counter = 0;
+        static uint8_t emergency_first_event = 1;
+        if (last_s0_state != 0 || ++emergency_redraw_counter >= 20)
         {
+            emergency_redraw_counter = 0;
             OLED_Clear();
+            if (!emergency_first_event)
+            {
+                OLED_SetCursor(8, 16);
+                OLED_WriteString("EMERGENCY", FONT_SIZE_NORMAL);
+                OLED_SetCursor(32, 36);
+                OLED_WriteString("STOP", FONT_SIZE_LARGE);
+            }
             OLED_Update();
+            emergency_first_event = 0;
         }
 
         // Override all controls to SAFE values for emergency
@@ -317,7 +339,7 @@ int main(void)
         if (last_s0_state == 0)
         {
             OLED_ShowSplashScreen();
-            HAL_Delay(1000);
+            // No HAL_Delay here - blocking would freeze emergency response
             last_s0_state = 1;
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
@@ -509,7 +531,8 @@ int main(void)
             last_motor_state = motor_active;
             last_cal_state = s1_2_hold_counter;
             uint8_t cal_progress = calibration_done ? 255 : s1_2_hold_counter;  // 255 = done
-            OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active, cal_progress);
+            uint8_t link_quality = NRF24_GetLinkQuality();  // 0-100 from robot Auto-ACK
+            OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active, cal_progress, link_quality);
             OLED_Update();
         }
     }
@@ -531,15 +554,19 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  HAL_StatusTypeDef status = HAL_ERROR;
+  const uint8_t HSE_MAX_ATTEMPTS = 5;
 
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+  /** Try HSE first (8 MHz crystal → PLL → 84 MHz SYSCLK, 48 MHz USB).
+   *  HSE can fail to start when VDD ramps up slowly (e.g. external 5V supply).
+   *  Retry up to HSE_MAX_ATTEMPTS times, cycling HSE off/on between attempts
+   *  to let the crystal oscillator restart cleanly.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -548,9 +575,43 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
   RCC_OscInitStruct.PLL.PLLQ = 7;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+
+  for (uint8_t attempt = 0; attempt < HSE_MAX_ATTEMPTS; attempt++)
   {
-    Error_Handler();
+    status = HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    if (status == HAL_OK)
+    {
+      break;
+    }
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+    HAL_Delay(50);  // SysTick runs on HSI here, so HAL_Delay still works
+  }
+
+  /** Fallback to HSI (16 MHz) if HSE never started.
+   *  PLL re-tuned so SYSCLK still = 84 MHz and USB still = 48 MHz:
+   *    VCO_in = HSI/PLLM = 16/16 = 1 MHz (same as HSE/8)
+   *  Note: HSI tolerance (~1%) does not meet USB-CDC spec (±0.25%);
+   *  USB may be unreliable in this fallback mode, but SPI/NRF24/OLED work fine.
+   */
+  if (status != HAL_OK)
+  {
+    clock_source_is_hsi = 1;
+
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLM = 16;
+    RCC_OscInitStruct.PLL.PLLN = 336;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+    RCC_OscInitStruct.PLL.PLLQ = 7;
+
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
