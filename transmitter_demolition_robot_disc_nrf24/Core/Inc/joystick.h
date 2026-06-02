@@ -14,8 +14,10 @@
   * [1] = joy_left_x  (PC3 - IN13)
   * [2] = joy_right_y (PA5 - IN5)
   * [3] = joy_right_x (PA7 - IN7)
-  * [4] = r1          (PA0 - IN0)
-  * [5] = r8          (PA2 - IN2)
+  * [4] = battery     (PA0 - IN0) via voltage divider
+  *
+  * Note: PA2 (was R8 pot) removed from ADC scan to eliminate floating-pin
+  * cross-talk noise that caused joystick spikes to 100%.
   *
   ******************************************************************************
   */
@@ -35,7 +37,7 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 
 /* Exported constants --------------------------------------------------------*/
-#define ADC_CHANNELS    6   // Number of ADC channels
+#define ADC_CHANNELS    5   // Number of ADC channels (PA2 removed)
 
 /* Exported macro ------------------------------------------------------------*/
 

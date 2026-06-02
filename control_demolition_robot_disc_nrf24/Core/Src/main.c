@@ -90,7 +90,7 @@ void Debug_Printf(const char* format, ...)
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
+  * @brief  The  application entry point.
   * @retval int
   */
 int main(void)

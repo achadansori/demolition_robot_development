@@ -645,6 +645,47 @@ void OLED_DrawBatteryBar(uint8_t x, uint8_t y, uint8_t battery_percent)
 }
 
 /**
+  * @brief  Draw a 4-bar signal-strength icon (bars only, like a phone signal icon)
+  * @param  x: X coordinate (left edge of the first/shortest bar)
+  * @param  y: Y coordinate (top of the 9px-tall icon area)
+  * @param  quality: Link quality 0-100 (from NRF24_GetLinkQuality)
+  * @retval None
+  *
+  * Bars grow in height left -> right. Bars within the current strength are
+  * filled solid; the rest are drawn as outlines so the full scale stays visible.
+  * Icon footprint: 15 px wide (x .. x+14), 8 px tall (y+1 .. y+8).
+  */
+void OLED_DrawSignalBars(uint8_t x, uint8_t y, uint8_t quality)
+{
+    const uint8_t bar_w = 3;            // bar width
+    const uint8_t gap = 1;             // gap between bars
+    const uint8_t base = y + 8;        // common baseline (bottom of every bar)
+    const uint8_t heights[4] = {2, 4, 6, 8};
+
+    // Number of lit bars from quality (matches the score thresholds in nrf24.c)
+    uint8_t lit = (quality >= 85) ? 4 :
+                  (quality >= 60) ? 3 :
+                  (quality >= 35) ? 2 :
+                  (quality >= 10) ? 1 : 0;
+
+    for (uint8_t i = 0; i < 4; i++)
+    {
+        uint8_t bx = x + i * (bar_w + gap);
+        uint8_t bh = heights[i];
+        uint8_t by = base - bh;
+
+        if (i < lit)
+        {
+            OLED_FillRect(bx, by, bar_w, bh);   // in-range: solid bar
+        }
+        else
+        {
+            OLED_DrawRect(bx, by, bar_w, bh);   // out-of-range: outline only
+        }
+    }
+}
+
+/**
   * @brief  Show mode and active cylinders with percentage
   * @param  s5_1: Switch 5_1 state
   * @param  s5_2: Switch 5_2 state
@@ -656,24 +697,29 @@ void OLED_DrawBatteryBar(uint8_t x, uint8_t y, uint8_t battery_percent)
   * @param  calibrating: S1_2 state (0 = idle, 1-20 = hold progress, 255 = done)
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active, uint8_t calibrating)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active, uint8_t calibrating, uint8_t link_quality)
 {
     OLED_Clear();
 
-    // Extract battery percentage from joystick_data (index 5)
-    uint8_t battery_percent = joystick_data[5];
+    // Extract battery percentage from joystick_data (index 4 = battery_percent field)
+    uint8_t battery_percent = joystick_data[4];
 
     // ========================================================================
-    // TOP BAR: Battery indicator
+    // TOP BAR: Signal strength (left) + Battery (right)
     // ========================================================================
-    // Draw battery bar at top-right (centered vertically at y=1)
+    // Signal icon + percentage (replaces the old "DEMOLITION" title).
+    // Reflects the NRF24 link quality back from the robot's Auto-ACK.
+    OLED_DrawSignalBars(0, 1, link_quality);
+
+    char sig_text[8];
+    snprintf(sig_text, sizeof(sig_text), "%d%%", link_quality);
+    OLED_SetCursor(20, 2);
+    OLED_WriteString(sig_text, FONT_SIZE_SMALL);
+
+    // Battery bar at top-right (centered vertically at y=1)
     OLED_DrawBatteryBar(72, 1, battery_percent);
 
-    // Title - smaller font to fit with battery
-    OLED_SetCursor(0, 1);
-    OLED_WriteString("DEMOLITION", FONT_SIZE_SMALL);
-
-    // Draw separator line below battery bar
+    // Draw separator line below top bar
     for (uint8_t i = 0; i < OLED_WIDTH; i++)
     {
         OLED_DrawPixel(i, 10, true);
