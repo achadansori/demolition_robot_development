@@ -214,23 +214,5 @@ void OTG_FS_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-/* CANopen link: CAN1 RX/TX interrupts + TIM14 1 ms time base */
-extern CAN_HandleTypeDef hcan1;
-extern TIM_HandleTypeDef htim14;
-
-void CAN1_TX_IRQHandler(void)
-{
-  HAL_CAN_IRQHandler(&hcan1);
-}
-
-void CAN1_RX0_IRQHandler(void)
-{
-  HAL_CAN_IRQHandler(&hcan1);
-}
-
-void TIM8_TRG_COM_TIM14_IRQHandler(void)
-{
-  HAL_TIM_IRQHandler(&htim14);
-}
 
 /* USER CODE END 1 */
