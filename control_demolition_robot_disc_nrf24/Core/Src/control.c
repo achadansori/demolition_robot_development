@@ -35,12 +35,12 @@ typedef struct {
 static PWM_Limits_t pwm_limits[20] = {
     [PWM_1_CYLINDER_1_OUT]           = {30, 70},  // Cylinder 1 OUT
     [PWM_2_CYLINDER_1_IN]            = {30, 55},  // Cylinder 1 IN
-    [PWM_3_CYLINDER_2_OUT]           = {30, 55},  // Cylinder 2 OUT
-    [PWM_4_CYLINDER_2_IN]            = {20, 50},  // Cylinder 2 IN
+    [PWM_3_CYLINDER_2_OUT]           = {30, 65},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {20, 65},  // Cylinder 2 IN
     [PWM_5_CYLINDER_3_OUT]           = {32, 70},  // Cylinder 3 OUT (Bucket)
     [PWM_6_CYLINDER_3_IN]            = {32, 60},  // Cylinder 3 IN (Bucket)
-    [PWM_7_CYLINDER_4_OUT]           = {32, 50},  // Cylinder 4 OUT
-    [PWM_8_CYLINDER_4_IN]            = {32, 60},  // Cylinder 4 IN
+    [PWM_7_CYLINDER_4_OUT]           = {32, 60},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {32, 70},  // Cylinder 4 IN
     [PWM_9_TOOL_1]                   = {0, 60},   // Tool 1 (Reserved) - max 60%
     [PWM_10_TOOL_2]                  = {0, 50},   // Tool 2 (Reserved)
     [PWM_11_SLEW_CW]                 = {25, 46},  // Slew CW
