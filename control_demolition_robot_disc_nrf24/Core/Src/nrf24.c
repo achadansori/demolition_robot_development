@@ -180,11 +180,8 @@ bool NRF24_Configure(void)
     // Configure address width: 5 bytes
     NRF24_WriteRegister(NRF24_REG_SETUP_AW, 0x03);
 
-    // Enable Auto-ACK on pipe 0 - the transmitter relies on these ACKs to
-    // measure link quality (signal-strength bars). The ACK reply is sent
-    // autonomously by the radio hardware, so it does NOT add SPI busy-wait
-    // on the MCU and does not disturb ADC DMA.
-    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x01);
+    // Disable Auto-ACK (prevents SPI busy-wait that disturbs ADC DMA)
+    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x00);
 
     // Enable RX pipe 0
     NRF24_WriteRegister(NRF24_REG_EN_RXADDR, 0x01);
