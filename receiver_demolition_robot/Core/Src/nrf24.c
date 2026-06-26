@@ -180,8 +180,11 @@ bool NRF24_Configure(void)
     // Configure address width: 5 bytes
     NRF24_WriteRegister(NRF24_REG_SETUP_AW, 0x03);
 
-    // Disable Auto-ACK (prevents SPI busy-wait that disturbs ADC DMA)
-    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x00);
+    // Enable Auto-ACK on pipe 0 - the transmitter relies on these ACKs to
+    // measure link quality (signal-strength bars). The ACK reply is sent
+    // autonomously by the radio hardware, so it does NOT add SPI busy-wait
+    // on the MCU and does not disturb ADC DMA.
+    NRF24_WriteRegister(NRF24_REG_EN_AA, 0x01);
 
     // Enable RX pipe 0
     NRF24_WriteRegister(NRF24_REG_EN_RXADDR, 0x01);
@@ -313,6 +316,33 @@ bool NRF24_GetData(NRF24_ReceivedData_t *data)
     data->s5_1 = (switches >> 11) & 0x01;
     data->s5_2 = (switches >> 12) & 0x01;
     data->motor_active = (switches >> 13) & 0x01;
+
+    return true;
+}
+
+/**
+  * @brief  Read the raw 8-byte payload from the RX FIFO (no decoding).
+  *         Used by the CANopen bridge to forward the packet byte-for-byte
+  *         onto OD 0x2000 so the control board decodes it exactly like NRF24.
+  * @param  payload8: caller buffer, must hold 8 bytes
+  * @retval true if a payload was read
+  */
+bool NRF24_GetRawPayload(uint8_t *payload8)
+{
+    uint8_t status;
+    uint8_t cmd = NRF24_CMD_R_RX_PAYLOAD;
+
+    // Read payload from RX FIFO
+    NRF24_CSN_LOW();
+    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, 100);
+    HAL_SPI_Receive(nrf24_hspi, payload8, 8, 100);
+    NRF24_CSN_HIGH();
+
+    // Clear RX_DR flag after reading
+    NRF24_WriteRegister(NRF24_REG_STATUS, NRF24_STATUS_RX_DR);
+
+    // Flush RX FIFO to prevent stale data on next read
+    NRF24_SendCommand(NRF24_CMD_FLUSH_RX);
 
     return true;
 }
