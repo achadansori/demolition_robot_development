@@ -296,8 +296,12 @@ bool NRF24_GetData(NRF24_ReceivedData_t *data)
     data->joy_left_y = payload[1];
     data->joy_right_x = payload[2];
     data->joy_right_y = payload[3];
-    data->r8 = payload[4];
-    data->r1 = payload[5];
+    /* Bytes 4-5 no longer carry the R8/R1 pots: the transmitter now sends
+     * its battery percentage in byte 4 (byte 5 reserved). Mapping byte 4
+     * into r8 would drive the breaker flow valve (PWM_10) proportional to
+     * the remote's battery level — force both to 0 instead. */
+    data->r8 = 0;
+    data->r1 = 0;
 
     // Extract bit-packed switches from bytes 6-7
     uint16_t switches = (payload[7] << 8) | payload[6];

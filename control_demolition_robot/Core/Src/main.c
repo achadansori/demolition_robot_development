@@ -128,8 +128,12 @@ static void ctrl_decode(const uint8_t d[8], NRF24_ReceivedData_t* o)
     o->joy_left_y  = d[1];
     o->joy_right_x = d[2];
     o->joy_right_y = d[3];
-    o->r8 = d[4];
-    o->r1 = d[5];
+    /* Bytes 4-5 no longer carry the R8/R1 pots: the transmitter now sends
+     * its battery percentage in byte 4 (byte 5 reserved). Mapping byte 4
+     * into r8 would drive the breaker flow valve (PWM_10) proportional to
+     * the remote's battery level — force both to 0 instead. */
+    o->r8 = 0;
+    o->r1 = 0;
 
     uint16_t sw = (uint16_t)((d[7] << 8) | d[6]);
     o->joy_left_btn1  = (sw >> 0)  & 0x01;
