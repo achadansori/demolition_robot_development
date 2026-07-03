@@ -2,14 +2,20 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : LoRa Receiver Main Program (STM32F401CCU6)
+  * @brief          : Demolition Robot Control board (STM32F407VGT6)
+  *                   Receives the 8-byte control packet over a CANopen bus
+  *                   (RPDO1, Node-ID 2) and drives the hydraulic PWM outputs.
+  *
+  *                   The radio link is gone: an upstream bridge
+  *                   (receiver_demolition_robot) receives the NRF24 packet and
+  *                   republishes the identical 8 bytes via TPDO1. This board is
+  *                   CAN-only.
   ******************************************************************************
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "i2s.h"
-#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 #include "usb_device.h"
@@ -17,9 +23,16 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "lora.h"
+#include "CO_app_STM32.h"
+#include "OD.h"
+#include "ctrl_link.h"
+#include "nrf24.h"          /* only for NRF24_ReceivedData_t (packet layout) */
 #include "control.h"
 #include "pwm.h"
+#include "usbd_cdc_if.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdarg.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -29,7 +42,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+/* The bridge TPDO1 fires every ~50 ms; treat the link as alive while a fresh
+ * RPDO1 arrived within this window (snappy connect/disconnect, no flicker). */
+#define COMM_TIMEOUT_MS  200u
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -40,29 +55,97 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-LoRa_ReceivedData_t lora_data;
+volatile uint8_t clock_source_is_hsi = 0;  /* 1 if HSE failed and HSI fallback active */
+CAN_HandleTypeDef hcan1;
+TIM_HandleTypeDef htim14;
+CANopenNodeSTM32 canOpenNodeSTM32;
+
+NRF24_ReceivedData_t nrf24_data;           /* decoded control packet (fed to Control_Update) */
+static char debug_buffer[256];
+
+/* Marks the time of the last RPDO1 reception (set from the OD write extension). */
+static volatile uint32_t ctrl_last_rx_tick = 0;
+static OD_extension_t ctrl_OD2000_ext;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void Debug_Print(const char* msg);
+void Debug_Printf(const char* format, ...);
+static void MX_CAN1_Init(void);
+static void MX_TIM14_Init(void);
+static void ctrl_decode(const uint8_t d[8], NRF24_ReceivedData_t* o);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
 /**
-  * @brief  UART receive complete callback
-  * @param  huart: UART handle
-  * @retval None
+  * @brief  Send debug message via USB CDC
   */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void Debug_Print(const char* msg)
 {
-    if (huart->Instance == USART1)
+    if (msg == NULL) return;
+    CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
+    HAL_Delay(5);
+}
+
+/**
+  * @brief  Send formatted debug message via USB CDC (printf-style)
+  */
+void Debug_Printf(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vsnprintf(debug_buffer, sizeof(debug_buffer), format, args);
+    va_end(args);
+    CDC_Transmit_FS((uint8_t*)debug_buffer, strlen(debug_buffer));
+    HAL_Delay(1);
+}
+
+/* Called by the stack whenever RPDO1 writes the control data (OD 0x2000). */
+static ODR_t ctrl_OD2000_write(OD_stream_t* stream, const void* buf,
+                               OD_size_t count, OD_size_t* countWritten)
+{
+    ctrl_last_rx_tick = HAL_GetTick();
+    return OD_writeOriginal(stream, buf, count, countWritten);
+}
+
+/* 1 ms timer interrupt -> CANopenNode tmrThread (RPDO/TPDO/SYNC processing). */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+    if (canopenNodeSTM32 != NULL && htim == canopenNodeSTM32->timerHandle)
     {
-        LoRa_Receiver_IRQHandler();
+        canopen_app_interrupt();
     }
+}
+
+/* Decode the 8-byte ctrl_link packet (same layout as the old NRF24 payload). */
+static void ctrl_decode(const uint8_t d[8], NRF24_ReceivedData_t* o)
+{
+    o->joy_left_x  = d[0];
+    o->joy_left_y  = d[1];
+    o->joy_right_x = d[2];
+    o->joy_right_y = d[3];
+    o->r8 = d[4];
+    o->r1 = d[5];
+
+    uint16_t sw = (uint16_t)((d[7] << 8) | d[6]);
+    o->joy_left_btn1  = (sw >> 0)  & 0x01;
+    o->joy_left_btn2  = (sw >> 1)  & 0x01;
+    o->joy_right_btn1 = (sw >> 2)  & 0x01;
+    o->joy_right_btn2 = (sw >> 3)  & 0x01;
+    o->s0   = (sw >> 4)  & 0x01;
+    o->s1_1 = (sw >> 5)  & 0x01;
+    o->s1_2 = (sw >> 6)  & 0x01;
+    o->s2_1 = (sw >> 7)  & 0x01;
+    o->s2_2 = (sw >> 8)  & 0x01;
+    o->s4_1 = (sw >> 9)  & 0x01;
+    o->s4_2 = (sw >> 10) & 0x01;
+    o->s5_1 = (sw >> 11) & 0x01;
+    o->s5_2 = (sw >> 12) & 0x01;
+    o->motor_active = (sw >> 13) & 0x01;
 }
 
 /* USER CODE END 0 */
@@ -96,8 +179,6 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_I2S3_Init();
-  MX_SPI1_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
   MX_TIM1_Init();
@@ -107,160 +188,93 @@ int main(void)
   MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
 
-  // ========================================================================
-  // SAFETY FEATURE: Communication Timeout Watchdog with Noise Filter
-  // ========================================================================
-  // If no data received from transmitter for COMM_TIMEOUT_MS,
-  // smoothly transition all PWM outputs to 0 to prevent runaway robot!
-  // Noise filter: Requires TIMEOUT_NOISE_FILTER consecutive failures before triggering
-  #define COMM_TIMEOUT_MS         500     // 500ms timeout (10 missed packets @ 50ms rate)
-  #define SAFETY_TRANSITION_STEPS 20      // 20 steps for smooth transition to 0
-  #define TIMEOUT_NOISE_FILTER    5       // Require 5 consecutive timeouts before safety mode
+  /* ---- CAN + 1 ms timer + CANopen (control = Node-ID 2, receives RPDO1) ---- */
+  MX_CAN1_Init();
+  MX_TIM14_Init();
 
-  uint32_t last_data_received_time = 0;   // Timestamp of last valid LoRa packet
-  uint8_t safety_mode_active = 0;         // 1 = timeout detected, transitioning to safe state
-  uint8_t safety_transition_step = 0;     // Current step in smooth transition (0-20)
-  uint8_t pwm_backup[PWM_CHANNEL_COUNT];  // Backup of PWM values before safety transition
-  uint8_t timeout_noise_counter = 0;      // Count consecutive timeouts for noise filtering
+  canOpenNodeSTM32.CANHandle = &hcan1;
+  canOpenNodeSTM32.HWInitFunction = MX_CAN1_Init;
+  canOpenNodeSTM32.timerHandle = &htim14;
+  canOpenNodeSTM32.desiredNodeID = CTRL_LINK_CONTROL_NODE_ID;
+  canOpenNodeSTM32.baudrate = CTRL_LINK_BITRATE_KBPS;
+  canopen_app_init(&canOpenNodeSTM32);
 
-  // Initialize M0 and M1 pins for LoRa configuration
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5;  // PE4=M0, PE5=M1
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  /* hook the OD control-data object so we know when fresh RPDO data arrives */
+  ctrl_OD2000_ext.object = NULL;
+  ctrl_OD2000_ext.read = OD_readOriginal;
+  ctrl_OD2000_ext.write = ctrl_OD2000_write;
+  OD_extension_init(OD_ENTRY_H2000, &ctrl_OD2000_ext);
 
-  // Initialize LoRa receiver
-  LoRa_Receiver_Init(&huart1, GPIOE, GPIO_PIN_4, GPIOE, GPIO_PIN_5);
-
-  // Configure LoRa module (no USB debug - faster startup)
-  LoRa_Receiver_Configure();
-
-  // Start listening for LoRa data
-  LoRa_Receiver_StartListening();
-
-  // Initialize control system (PWM outputs)
+  /* Initialize control system (PWM outputs to safe 0%) */
   Control_Init();
 
-  // Initialize safety timeout - give transmitter time to start (1 second grace period)
-  last_data_received_time = HAL_GetTick();
+  /* Wait for USB CDC, then announce */
+  HAL_Delay(2000);
+  Debug_Printf("\r\n=== Demolition Robot Control (CANopen Node-ID %u) ===\r\n",
+               (unsigned)CTRL_LINK_CONTROL_NODE_ID);
+  Debug_Printf("CAN 500 kbps on PD0/PD1, waiting for RPDO1...\r\n\r\n");
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint32_t last_diag_time = 0;
+  uint32_t rx_packet_seen = 0;
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    canopen_app_process();
 
-    // ========================================================================
-    // COMMUNICATION TIMEOUT SAFETY WATCHDOG
-    // ========================================================================
-    uint32_t current_time = HAL_GetTick();
-    uint32_t time_since_last_data = current_time - last_data_received_time;
-
-    // Check if new data is available
-    if (LoRa_Receiver_IsDataAvailable())
+    /* ---- Read the latest RPDO1 process data (OD 0x2000) ---- */
+    uint8_t d[8];
+    if (canopenNodeSTM32 != NULL && canopenNodeSTM32->canOpenStack != NULL)
     {
-      // Get received data
-      if (LoRa_Receiver_GetData(&lora_data))
-      {
-        // Update timestamp - we received valid data!
-        last_data_received_time = current_time;
-
-        // Reset timeout noise counter - valid data received
-        timeout_noise_counter = 0;
-
-        // If recovering from safety mode, restore normal operation
-        if (safety_mode_active)
-        {
-          safety_mode_active = 0;
-          safety_transition_step = 0;
-          // PWM will be restored by Control_Update() below
-        }
-
-        // Update control outputs based on received data (normal operation)
-        Control_Update(&lora_data);
-      }
+      CO_LOCK_OD(canopenNodeSTM32->canOpenStack->CANmodule);
+      for (int i = 0; i < 8; i++) { d[i] = OD_RAM.x2000_controlData[i]; }
+      CO_UNLOCK_OD(canopenNodeSTM32->canOpenStack->CANmodule);
     }
     else
     {
-      // No timeout - reset counter
-      timeout_noise_counter = 0;
+      for (int i = 0; i < 8; i++) { d[i] = 0; }
     }
 
-    // ========================================================================
-    // SAFETY TIMEOUT: Smooth transition to 0 if no data received (with noise filter)
-    // ========================================================================
-    if (time_since_last_data > COMM_TIMEOUT_MS)
+    uint32_t now = HAL_GetTick();
+    uint8_t link_alive = ((now - ctrl_last_rx_tick) < COMM_TIMEOUT_MS);
+
+    if (link_alive)
     {
-      // TIMEOUT DETECTED! No data received for more than 500ms
-      // Use noise filter to prevent false triggers from single packet loss
-
-      // Increment timeout counter
-      if (timeout_noise_counter < TIMEOUT_NOISE_FILTER)
-      {
-        timeout_noise_counter++;
-      }
-
-      // Only enter safety mode if we've had TIMEOUT_NOISE_FILTER consecutive timeouts
-      if (timeout_noise_counter >= TIMEOUT_NOISE_FILTER && !safety_mode_active)
-      {
-        // First time entering safety mode - backup current PWM values
-        safety_mode_active = 1;
-        safety_transition_step = 0;
-
-        for (uint8_t i = 0; i < PWM_CHANNEL_COUNT; i++)
-        {
-          pwm_backup[i] = PWM_GetDutyCycle((PWM_Channel_t)i);
-        }
-
-        // ENTER SLEEP MODE: Set PE6 to LOW
-        GPIOE->BSRR = (1<<(6+16));  // BR6 = reset PE6 to LOW
-      }
+      ctrl_decode(d, &nrf24_data);
+      rx_packet_seen = 1;
     }
-
-    // ========================================================================
-    // SAFETY TRANSITION: Continue smooth transition if in safety mode
-    // ========================================================================
-    if (safety_mode_active)
+    else
     {
-
-      // Smooth transition: Gradually reduce all PWM to 0 over 20 steps
-      // Each step runs every 10ms (in main loop), total transition = 200ms
-      static uint32_t last_transition_step = 0;
-      if (HAL_GetTick() - last_transition_step >= 10)  // 10ms per step
-      {
-        last_transition_step = HAL_GetTick();
-
-        if (safety_transition_step < SAFETY_TRANSITION_STEPS)
-        {
-          safety_transition_step++;
-
-          // Calculate transition factor (1.0 → 0.0)
-          float factor = 1.0f - ((float)safety_transition_step / (float)SAFETY_TRANSITION_STEPS);
-
-          // Apply smooth transition to all PWM channels
-          for (uint8_t i = 0; i < PWM_CHANNEL_COUNT; i++)
-          {
-            uint8_t new_duty = (uint8_t)(pwm_backup[i] * factor);
-            PWM_SetDutyCycle((PWM_Channel_t)i, new_duty);
-          }
-        }
-        else
-        {
-          // Transition complete - force all PWM to exact 0
-          PWM_StopAll();
-        }
-      }
+      /* Link lost -> all-zero packet: s0=0 forces the emergency-stop branch in
+       * Control_Update (PWM all 0, motor relay + tool off). Fail safe. */
+      memset(&nrf24_data, 0, sizeof(nrf24_data));
     }
 
-    // No delay here - process LoRa data immediately without blocking
+    Control_Update(&nrf24_data);
+
+    /* Diagnostic output every 1 second */
+    if ((now - last_diag_time) >= 1000u)
+    {
+      last_diag_time = now;
+      Debug_Printf("LINK=%s | RAW:[%02X %02X %02X %02X %02X %02X %02X %02X]\r\n",
+          link_alive ? "UP " : "DOWN",
+          d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+      if (rx_packet_seen)
+      {
+        Debug_Printf("  LX=%3d LY=%3d RX=%3d RY=%3d | S0=%d S5=%d%d | M=%d\r\n",
+            nrf24_data.joy_left_x, nrf24_data.joy_left_y,
+            nrf24_data.joy_right_x, nrf24_data.joy_right_y,
+            nrf24_data.s0, nrf24_data.s5_1, nrf24_data.s5_2,
+            nrf24_data.motor_active);
+      }
+    }
+    /* USER CODE END 3 */
   }
-  /* USER CODE END 3 */
 }
 
 /**
@@ -309,6 +323,67 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* CAN1: 500 kbps @ APB1 = 42 MHz  (Tq = 1/(42M/6); bit = 1+11+2 = 14 Tq). */
+static void MX_CAN1_Init(void)
+{
+  hcan1.Instance = CAN1;
+  hcan1.Init.Prescaler = 6;
+  hcan1.Init.Mode = CAN_MODE_NORMAL;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_11TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
+  hcan1.Init.TimeTriggeredMode = DISABLE;
+  hcan1.Init.AutoBusOff = ENABLE;
+  hcan1.Init.AutoWakeUp = DISABLE;
+  hcan1.Init.AutoRetransmission = DISABLE;
+  hcan1.Init.ReceiveFifoLocked = ENABLE;
+  hcan1.Init.TransmitFifoPriority = ENABLE;
+  if (HAL_CAN_Init(&hcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/* CAN1 pin + clock + NVIC setup (called by HAL_CAN_Init). PD0=RX, PD1=TX. */
+void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  if (canHandle->Instance == CAN1)
+  {
+    __HAL_RCC_CAN1_CLK_ENABLE();
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+    GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
+    HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+    HAL_NVIC_SetPriority(CAN1_TX_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(CAN1_TX_IRQn);
+    HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+  }
+}
+
+/* TIM14: 1 ms time base for CANopenNode (APB1 timer clock = 84 MHz). */
+static void MX_TIM14_Init(void)
+{
+  __HAL_RCC_TIM14_CLK_ENABLE();
+  HAL_NVIC_SetPriority(TIM8_TRG_COM_TIM14_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(TIM8_TRG_COM_TIM14_IRQn);
+
+  htim14.Instance = TIM14;
+  htim14.Init.Prescaler = 84 - 1;          /* 84 MHz / 84 = 1 MHz */
+  htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim14.Init.Period = 1000 - 1;           /* 1 MHz / 1000 = 1 kHz = 1 ms */
+  htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
 
 /* USER CODE END 4 */
 
