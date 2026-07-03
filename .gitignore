@@ -35,3 +35,8 @@ Thumbs.db
 Debug/
 Release/
 *.log
+
+# GUI build artifacts / dependencies (no source, generated output only)
+demolition_robot_gui/**/node_modules/
+demolition_robot_gui/**/dist/
+demolition_robot_gui/**/.pio/
