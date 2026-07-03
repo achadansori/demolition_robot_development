@@ -91,6 +91,7 @@ static void NRF24_LQ_Push(uint8_t score)
 }
 
 /* Private function prototypes -----------------------------------------------*/
+static void NRF24_DelayUs(uint32_t us);
 static void NRF24_CSN_LOW(void);
 static void NRF24_CSN_HIGH(void);
 static void NRF24_CE_LOW(void);
@@ -101,6 +102,19 @@ static void NRF24_WriteRegisterMulti(uint8_t reg, uint8_t *data, uint8_t size);
 static void NRF24_ReadRegisterMulti(uint8_t reg, uint8_t *data, uint8_t size);
 static uint8_t NRF24_SendCommand(uint8_t cmd);
 static void NRF24_WritePayload(uint8_t *data, uint8_t size);
+
+/**
+  * @brief  Busy-wait for `us` microseconds using the DWT cycle counter.
+  *         Accurate at any SYSCLK (uses SystemCoreClock), unlike a raw
+  *         volatile loop whose duration depends on clock and optimizer.
+  *         CYCCNT is enabled in NRF24_Init().
+  */
+static void NRF24_DelayUs(uint32_t us)
+{
+    uint32_t start = DWT->CYCCNT;
+    uint32_t ticks = us * (SystemCoreClock / 1000000U);
+    while ((DWT->CYCCNT - start) < ticks);
+}
 
 /**
   * @brief  Set CSN pin LOW (SPI enable)
@@ -254,6 +268,11 @@ void NRF24_Init(SPI_HandleTypeDef *hspi, GPIO_TypeDef *ce_port, uint16_t ce_pin,
     CSN_Port = csn_port;
     CSN_Pin = csn_pin;
 
+    // Enable DWT cycle counter for microsecond delays (CE pulse timing)
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
     // Initial pin states
     NRF24_CE_LOW();
     NRF24_CSN_HIGH();
@@ -345,9 +364,11 @@ bool NRF24_SendBinary(const uint8_t* data, uint16_t size)
     // Write payload to TX FIFO
     NRF24_WritePayload((uint8_t*)data, size);
 
-    // Pulse CE to start transmission (min 10us)
+    // Pulse CE to start transmission (datasheet: CE high >= 10us).
+    // The old `for (volatile uint8_t i...)` loop only gave a few us at
+    // 84 MHz - below spec, so TX could silently fail to start.
     NRF24_CE_HIGH();
-    for (volatile uint8_t i = 0; i < 20; i++);  // ~15us delay at 84MHz
+    NRF24_DelayUs(15);
     NRF24_CE_LOW();
 
     // Wait for transmission complete (busy-wait, no HAL_Delay)
