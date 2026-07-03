@@ -39,8 +39,8 @@ enum {
     CTRL_BYTE_LEFT_Y  = 1,   /* joystick left  Y                     */
     CTRL_BYTE_RIGHT_X = 2,   /* joystick right X                     */
     CTRL_BYTE_RIGHT_Y = 3,   /* joystick right Y                     */
-    CTRL_BYTE_R8      = 4,   /* battery % / R8 pot                   */
-    CTRL_BYTE_R1      = 5,   /* reserved / R1 pot                    */
+    CTRL_BYTE_R8      = 4,   /* TX battery % (NOT a pot - do not map to r8) */
+    CTRL_BYTE_R1      = 5,   /* reserved                                     */
     CTRL_BYTE_SW_LO   = 6,   /* switch bits 0..7                     */
     CTRL_BYTE_SW_HI   = 7    /* switch bits 8..15                    */
 };
