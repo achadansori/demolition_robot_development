@@ -55,7 +55,9 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin|Lora_M0_Pin|Lora_M1_Pin, GPIO_PIN_RESET);
+  /* CS_I2C_SPI (PE3) = HIGH to deselect LIS302DL, NRF_CSN (PE5) = HIGH to deselect NRF24 */
+  HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin|NRF_CSN_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOE, NRF_CE_Pin|MOTOR_STARTER_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(OTG_FS_PowerSwitchOn_GPIO_Port, OTG_FS_PowerSwitchOn_Pin, GPIO_PIN_SET);
@@ -66,8 +68,8 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PEPin PEPin PEPin */
-  GPIO_InitStruct.Pin = CS_I2C_SPI_Pin|Lora_M0_Pin|Lora_M1_Pin;
+  /*Configure GPIO pins : PEPin PEPin PEPin PEPin (NRF24 CE, CSN, Motor Starter) */
+  GPIO_InitStruct.Pin = CS_I2C_SPI_Pin|NRF_CE_Pin|NRF_CSN_Pin|MOTOR_STARTER_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

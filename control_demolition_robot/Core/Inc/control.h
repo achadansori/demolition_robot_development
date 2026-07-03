@@ -15,12 +15,12 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
-#include "lora.h"
+#include "nrf24.h"
 #include <stdbool.h>
 
 /* Public function prototypes ------------------------------------------------*/
 void Control_Init(void);
-void Control_Update(LoRa_ReceivedData_t *lora_data);
+void Control_Update(NRF24_ReceivedData_t *nrf24_data);
 
 #ifdef __cplusplus
 }
