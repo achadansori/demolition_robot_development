@@ -196,18 +196,22 @@ int main(void)
   MX_CAN1_Init();
   MX_TIM14_Init();
 
+  /* hook the OD control-data object so we know when fresh RPDO data arrives.
+   * MUST be installed BEFORE canopen_app_init(): RPDO mapping snapshots the
+   * OD write function (OD_getSub in PDOconfigMap) during init, so an
+   * extension installed afterwards is never called -> ctrl_last_rx_tick
+   * would never update and the link would always read DOWN. */
+  ctrl_OD2000_ext.object = NULL;
+  ctrl_OD2000_ext.read = OD_readOriginal;
+  ctrl_OD2000_ext.write = ctrl_OD2000_write;
+  OD_extension_init(OD_ENTRY_H2000, &ctrl_OD2000_ext);
+
   canOpenNodeSTM32.CANHandle = &hcan1;
   canOpenNodeSTM32.HWInitFunction = MX_CAN1_Init;
   canOpenNodeSTM32.timerHandle = &htim14;
   canOpenNodeSTM32.desiredNodeID = CTRL_LINK_CONTROL_NODE_ID;
   canOpenNodeSTM32.baudrate = CTRL_LINK_BITRATE_KBPS;
   canopen_app_init(&canOpenNodeSTM32);
-
-  /* hook the OD control-data object so we know when fresh RPDO data arrives */
-  ctrl_OD2000_ext.object = NULL;
-  ctrl_OD2000_ext.read = OD_readOriginal;
-  ctrl_OD2000_ext.write = ctrl_OD2000_write;
-  OD_extension_init(OD_ENTRY_H2000, &ctrl_OD2000_ext);
 
   /* Initialize control system (PWM outputs to safe 0%) */
   Control_Init();
