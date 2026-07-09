@@ -2,8 +2,8 @@
   ******************************************************************************
   * @file           : oled.h
   * @brief          : SSD1309/SSD1306 OLED Display Driver (128x64 I2C)
-  *                   Optimized for SSD1309 with compatibility for SSD1306
-  *                   PB6 = I2C1_SCL, PB7 = I2C1_SDA
+  *                   STM32F407 Discovery - I2C3
+  *                   PA8 = I2C3_SCL, PC9 = I2C3_SDA
   ******************************************************************************
   */
 
@@ -45,8 +45,9 @@ void OLED_InvertDisplay(bool invert);
 
 /* Display functions for robot data */
 void OLED_ShowSplashScreen(void);
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active);
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active, uint8_t calibrating, uint8_t link_quality);
 void OLED_DrawBatteryBar(uint8_t x, uint8_t y, uint8_t battery_percent);
+void OLED_DrawSignalBars(uint8_t x, uint8_t y, uint8_t quality);
 
 #ifdef __cplusplus
 }

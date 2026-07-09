@@ -1,8 +1,8 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : switch.c
   * @brief          : Switch and button reading implementation
+  *                   STM32F407 Discovery Transmitter
   ******************************************************************************
   * @attention
   *
@@ -12,25 +12,27 @@
   *
   * Data dikemas dalam 2 bytes menggunakan bit packing
   *
+  * Pin Configuration (STM32F407 Discovery):
+  * - JOY_LEFT_BTN1:  PA3
+  * - JOY_LEFT_BTN2:  PA1
+  * - JOY_RIGHT_BTN1: PB1
+  * - JOY_RIGHT_BTN2: PC5
+  * - S0:             PB0
+  * - S1_1:           PE3
+  * - S1_2:           PE5
+  * - S2_1:           PE1
+  * - S2_2:           PB8
+  * - S4_1:           PD6
+  * - S4_2:           PB3
+  * - S5_1:           PB5
+  * - S5_2:           PB7
+  *
   ******************************************************************************
   */
-/* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "switch.h"
 #include "main.h"
-
-/* Private typedef -----------------------------------------------------------*/
-
-/* Private define ------------------------------------------------------------*/
-
-/* Private macro -------------------------------------------------------------*/
-
-/* Private variables ---------------------------------------------------------*/
-
-/* Private function prototypes -----------------------------------------------*/
-
-/* Private user code ---------------------------------------------------------*/
 
 /**
   * @brief  Initialize switch module
@@ -43,14 +45,18 @@ void Switch_Init(void)
 }
 
 /**
-  * @brief  Read specific GPIO pin state
+  * @brief  Read specific GPIO pin state (ACTIVE HIGH with Pull-down)
   * @param  port: GPIO port (GPIOA, GPIOB, etc)
   * @param  pin: GPIO pin number
-  * @retval Pin state (true = pressed/HIGH, false = released/LOW)
+  * @retval Pin state (true = pressed/ON, false = released/OFF)
+  *         With Pull-down: pressed = HIGH = return 1, released = LOW = return 0
   */
 bool Switch_ReadPin(GPIO_TypeDef* port, uint16_t pin)
 {
     GPIO_PinState state = HAL_GPIO_ReadPin(port, pin);
+    // Direct logic for Pull-down configuration (active HIGH)
+    // When pressed: pin is HIGH (connected to VCC) → return 1 (true)
+    // When released: pin is LOW (pulled down) → return 0 (false)
     return (state == GPIO_PIN_SET);
 }
 

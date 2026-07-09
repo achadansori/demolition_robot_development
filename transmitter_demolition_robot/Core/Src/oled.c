@@ -388,8 +388,9 @@ void OLED_Init(I2C_HandleTypeDef *hi2c)
     OLED_WriteCommand(SSD1306_MEMORY_MODE);
     OLED_WriteCommand(0x00);  // Horizontal addressing mode
 
-    OLED_WriteCommand(SSD1306_SEG_REMAP | 0x01);  // Column address 127 mapped to SEG0
-    OLED_WriteCommand(SSD1306_COM_SCAN_DEC);      // Scan from COM[N-1] to COM0
+    // Flipped 180° to match upside-down mechanical mounting
+    OLED_WriteCommand(SSD1306_SEG_REMAP | 0x00);  // Column address 0 mapped to SEG0
+    OLED_WriteCommand(SSD1306_COM_SCAN_INC);      // Scan from COM0 to COM[N-1]
 
     OLED_WriteCommand(SSD1306_SET_COMPINS);
     OLED_WriteCommand(0x12);  // Alternative COM pin config, disable left/right remap
@@ -644,34 +645,81 @@ void OLED_DrawBatteryBar(uint8_t x, uint8_t y, uint8_t battery_percent)
 }
 
 /**
+  * @brief  Draw a 4-bar signal-strength icon (bars only, like a phone signal icon)
+  * @param  x: X coordinate (left edge of the first/shortest bar)
+  * @param  y: Y coordinate (top of the 9px-tall icon area)
+  * @param  quality: Link quality 0-100 (from NRF24_GetLinkQuality)
+  * @retval None
+  *
+  * Bars grow in height left -> right. Bars within the current strength are
+  * filled solid; the rest are drawn as outlines so the full scale stays visible.
+  * Icon footprint: 15 px wide (x .. x+14), 8 px tall (y+1 .. y+8).
+  */
+void OLED_DrawSignalBars(uint8_t x, uint8_t y, uint8_t quality)
+{
+    const uint8_t bar_w = 3;            // bar width
+    const uint8_t gap = 1;             // gap between bars
+    const uint8_t base = y + 8;        // common baseline (bottom of every bar)
+    const uint8_t heights[4] = {2, 4, 6, 8};
+
+    // Number of lit bars from quality (matches the score thresholds in nrf24.c)
+    uint8_t lit = (quality >= 85) ? 4 :
+                  (quality >= 60) ? 3 :
+                  (quality >= 35) ? 2 :
+                  (quality >= 10) ? 1 : 0;
+
+    for (uint8_t i = 0; i < 4; i++)
+    {
+        uint8_t bx = x + i * (bar_w + gap);
+        uint8_t bh = heights[i];
+        uint8_t by = base - bh;
+
+        if (i < lit)
+        {
+            OLED_FillRect(bx, by, bar_w, bh);   // in-range: solid bar
+        }
+        else
+        {
+            OLED_DrawRect(bx, by, bar_w, bh);   // out-of-range: outline only
+        }
+    }
+}
+
+/**
   * @brief  Show mode and active cylinders with percentage
   * @param  s5_1: Switch 5_1 state
   * @param  s5_2: Switch 5_2 state
   * @param  joystick_data: Pointer to joystick data array [left_x, left_y, right_x, right_y]
   * @param  sleep_mode: 1 if in SLEEP mode, 0 if normal operation
   * @param  safety_ok: 1 if safety checks passed (only used in SLEEP mode)
-  * @param  hold_progress: S2_1 hold counter in SLEEP mode, S1_1 hold counter in normal mode
+  * @param  hold_progress: S1_1 hold counter in SLEEP mode, S2_1 hold counter in normal mode
   * @param  motor_active: 1 if motor is ON, 0 if motor is OFF
+  * @param  calibrating: S1_2 state (0 = idle, 1-20 = hold progress, 255 = done)
   * @retval None
   */
-void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active)
+void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active, uint8_t calibrating, uint8_t link_quality)
 {
     OLED_Clear();
 
-    // Extract battery percentage from joystick_data (index 5)
-    uint8_t battery_percent = joystick_data[5];
+    // Extract battery percentage from joystick_data (index 4 = battery_percent field)
+    uint8_t battery_percent = joystick_data[4];
 
     // ========================================================================
-    // TOP BAR: Battery indicator
+    // TOP BAR: Signal strength (left) + Battery (right)
     // ========================================================================
-    // Draw battery bar at top-right (centered vertically at y=1)
+    // Signal icon + percentage (replaces the old "DEMOLITION" title).
+    // Reflects the NRF24 link quality back from the robot's Auto-ACK.
+    OLED_DrawSignalBars(0, 1, link_quality);
+
+    char sig_text[8];
+    snprintf(sig_text, sizeof(sig_text), "%d%%", link_quality);
+    OLED_SetCursor(20, 2);
+    OLED_WriteString(sig_text, FONT_SIZE_SMALL);
+
+    // Battery bar at top-right (centered vertically at y=1)
     OLED_DrawBatteryBar(72, 1, battery_percent);
 
-    // Title - smaller font to fit with battery
-    OLED_SetCursor(0, 1);
-    OLED_WriteString("DEMOLITION", FONT_SIZE_SMALL);
-
-    // Draw separator line below battery bar
+    // Draw separator line below top bar
     for (uint8_t i = 0; i < OLED_WIDTH; i++)
     {
         OLED_DrawPixel(i, 10, true);
@@ -682,40 +730,62 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
     // ========================================================================
     if (sleep_mode)
     {
-        // Draw warning box (adjusted Y position after top bar)
-        OLED_DrawRect(5, 14, 118, 44);
-        OLED_DrawRect(6, 15, 116, 42);  // Double border for emphasis
-
         // Display SLEEP MODE status
         OLED_SetCursor(18, 20);
         OLED_WriteString("** SLEEP MODE **", FONT_SIZE_NORMAL);
 
         if (safety_ok)
         {
-            // Safety checks PASSED - show S2_1 hold progress
             if (hold_progress > 0)
             {
-                // S2_1 is being held - show progress
+                // S1_1 is being held - show progress
                 char progress_text[20];
-                uint8_t percent = (hold_progress * 100) / 10;  // 10 = S2_1_HOLD_REQUIRED (1 sec)
+                uint8_t percent = (hold_progress * 100) / 20;  // 20 = S1_1_HOLD_REQUIRED (~0.1 sec)
                 snprintf(progress_text, sizeof(progress_text), "Holding: %d%%", percent);
 
                 OLED_SetCursor(28, 32);
                 OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
 
                 // Draw progress bar
-                uint8_t bar_width = (hold_progress * 100) / 10;  // 0-100 pixels
+                uint8_t bar_width = (hold_progress * 100) / 20;  // 0-100 pixels
                 OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
                 OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
             }
+            else if (calibrating > 0 && calibrating != 255)
+            {
+                // S1_2 is being held - show calibration progress
+                char progress_text[20];
+                uint8_t percent = (calibrating * 100) / 20;  // 20 = S1_2_HOLD_REQUIRED
+                snprintf(progress_text, sizeof(progress_text), "Calib: %d%%", percent);
+
+                OLED_SetCursor(18, 32);
+                OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
+
+                // Draw progress bar
+                uint8_t bar_width = (calibrating * 100) / 20;  // 0-100 pixels
+                OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
+                OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
+            }
+            else if (calibrating == 255)
+            {
+                // Calibration done - show confirmation
+                OLED_SetCursor(15, 32);
+                OLED_WriteString("CALIBRATED!", FONT_SIZE_NORMAL);
+
+                OLED_SetCursor(15, 44);
+                OLED_WriteString("Hold S1 UP", FONT_SIZE_NORMAL);
+            }
             else
             {
-                // Ready to hold S2_1
-                OLED_SetCursor(8, 36);
+                // Ready - show instructions
+                OLED_SetCursor(8, 32);
                 OLED_WriteString("Controls Centered", FONT_SIZE_NORMAL);
 
-                OLED_SetCursor(15, 48);
-                OLED_WriteString("Hold S2 UP", FONT_SIZE_NORMAL);
+                OLED_SetCursor(15, 42);
+                OLED_WriteString("Hold S1 UP", FONT_SIZE_NORMAL);
+
+                OLED_SetCursor(10, 52);
+                OLED_WriteString("S1_2=Calibrate", FONT_SIZE_SMALL);
             }
         }
         else
@@ -728,45 +798,42 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
             OLED_WriteString("Release S0 Button", FONT_SIZE_SMALL);
 
             OLED_SetCursor(5, 52);
-            OLED_WriteString("S1,S2_2,S4,S5 OFF", FONT_SIZE_SMALL);
+            OLED_WriteString("S2,S4,S5 OFF", FONT_SIZE_SMALL);
         }
 
         return;  // Exit early - don't show normal mode info
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL - S1_1 HOLD Display (After exiting SLEEP mode)
+    // MOTOR STARTER CONTROL - S2_1 HOLD Display (After exiting SLEEP mode)
     // ========================================================================
     if (!motor_active)
     {
-        // Motor is not active yet - show S1 hold instructions/progress
-        // Draw info box (adjusted Y position after top bar)
-        OLED_DrawRect(5, 14, 118, 44);
-
+        // Motor is not active yet - show S2 hold instructions/progress
         // Display title
         OLED_SetCursor(15, 20);
         OLED_WriteString("MOTOR READY", FONT_SIZE_NORMAL);
 
         if (hold_progress > 0)
         {
-            // S1_1 is being held - show progress
+            // S2_1 is being held - show progress
             char progress_text[20];
-            uint8_t percent = (hold_progress * 100) / 10;  // 10 = S1_1_HOLD_REQUIRED (1 sec)
+            uint8_t percent = (hold_progress * 100) / 20;  // 20 = S2_1_HOLD_REQUIRED (~0.1 sec)
             snprintf(progress_text, sizeof(progress_text), "Holding: %d%%", percent);
 
             OLED_SetCursor(28, 32);
             OLED_WriteString(progress_text, FONT_SIZE_NORMAL);
 
             // Draw progress bar
-            uint8_t bar_width = (hold_progress * 100) / 10;  // 0-100 pixels
+            uint8_t bar_width = (hold_progress * 100) / 20;  // 0-100 pixels
             OLED_DrawRect(14, 44, 100, 10);  // Progress bar outline
             OLED_FillRect(15, 45, bar_width, 8);  // Filled portion
         }
         else
         {
-            // Ready to hold S1_1 - show instruction
+            // Ready to hold S2_1 - show instruction
             OLED_SetCursor(8, 36);
-            OLED_WriteString("Hold S1 UP", FONT_SIZE_NORMAL);
+            OLED_WriteString("Hold S2 UP", FONT_SIZE_NORMAL);
 
             OLED_SetCursor(8, 48);
             OLED_WriteString("to start motor", FONT_SIZE_NORMAL);
@@ -831,16 +898,40 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
     }
     else if (s5_1 == 1 && s5_2 == 0)
     {
-        // Mode DUAL - Reserved
+        // Mode DUAL - Cylinder + Track
         mode_name = "MODE: DUAL";
 
-        OLED_SetCursor(25, 20);
-        OLED_WriteString((char*)mode_name, FONT_SIZE_NORMAL);
+        OLED_SetCursor(20, 12);
+        OLED_WriteString((char*)mode_name, FONT_SIZE_SMALL);
 
-        OLED_SetCursor(20, 36);
-        OLED_WriteString("Reserved for", FONT_SIZE_NORMAL);
-        OLED_SetCursor(25, 48);
-        OLED_WriteString("Future Use", FONT_SIZE_NORMAL);
+        // Same cylinder display as UPPER mode
+        uint8_t c2_up = (right_y < 127) ? ((127 - right_y) * 100) / 127 : 0;
+        uint8_t c2_dn = (right_y > 127) ? ((right_y - 127) * 100) / 128 : 0;
+
+        uint8_t c3_up = (left_y > 127) ? ((left_y - 127) * 100) / 128 : 0;
+        uint8_t c3_dn = (left_y < 127) ? ((127 - left_y) * 100) / 127 : 0;
+
+        uint8_t c4_up = (right_x > 127) ? ((right_x - 127) * 100) / 128 : 0;
+        uint8_t c4_dn = (right_x < 127) ? ((127 - right_x) * 100) / 127 : 0;
+
+        uint8_t slew_ccw = (left_x < 127) ? ((127 - left_x) * 100) / 127 : 0;
+        uint8_t slew_cw = (left_x > 127) ? ((left_x - 127) * 100) / 128 : 0;
+
+        OLED_SetCursor(0, 20);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL2 UP=%d%% DOWN=%d%%", c2_up, c2_dn);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(0, 28);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL3 UP=%d%% DOWN=%d%%", c3_up, c3_dn);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(0, 36);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL4 UP=%d%% DOWN=%d%%", c4_up, c4_dn);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
+
+        OLED_SetCursor(0, 44);
+        snprintf(line_buffer, sizeof(line_buffer), "SLEW CCW=%d%% CW=%d%%", slew_ccw, slew_cw);
+        OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
     }
     else if (s5_1 == 0 && s5_2 == 1)
     {

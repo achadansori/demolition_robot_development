@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2025 STMicroelectronics.
+  * Copyright (c) 2026 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -19,21 +19,27 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "can.h"
+#include "dma.h"
 #include "i2c.h"
+#include "spi.h"
 #include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-// Custom modules (OOP style)
+// Custom modules
 #include "var.h"
 #include "joystick.h"
 #include "switch.h"
-#include "usb.h"
-#include "lora.h"
+#include "nrf24.h"
 #include "oled.h"
-#include "battery.h"
+#include "usb_device.h"
+#include "usbd_cdc_if.h"
+#include "debug.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,20 +60,20 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-// NOTE: Add this in i2c.c after enabling I2C1 in CubeMX:
-// I2C_HandleTypeDef hi2c1;
-extern I2C_HandleTypeDef hi2c1;  // I2C1 for OLED (PB6=SCL, PB7=SDA)
+extern I2C_HandleTypeDef hi2c3;  // I2C3 for OLED (PA8=SCL, PC9=SDA)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void Debug_Print(const char* msg);
+void Debug_Printf(const char* format, ...);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+volatile uint8_t s0_emergency_flag = 0;  // Set by EXTI0 ISR when S0 = 0
+volatile uint8_t clock_source_is_hsi = 0;  // 1 if HSE failed and HSI fallback is active
 /* USER CODE END 0 */
 
 /**
@@ -99,100 +105,145 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
-  MX_USART1_UART_Init();
+  MX_CAN1_Init();
+  MX_I2C3_Init();
+  MX_SPI2_Init();
+  MX_USART3_UART_Init();
   MX_USB_DEVICE_Init();
-  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+
+  // Re-configure switch pins with internal pull-down (survives CubeMX regeneration)
+  MX_GPIO_ConfigureSwitchPullDown();
+
+  // Read initial S0 state (EXTI only triggers on edges, need initial state)
+  if (HAL_GPIO_ReadPin(S0_GPIO_Port, S0_Pin) == GPIO_PIN_RESET)
+  {
+      s0_emergency_flag = 1;
+  }
+
+  // Wait for USB CDC to be ready
+  HAL_Delay(2000);
+
+  // Debug: Send startup message
+  Debug_Printf("\r\n=== Transmitter Demolition Robot (NRF24 + Discovery) ===\r\n");
+  HAL_Delay(10);
+  if (clock_source_is_hsi)
+  {
+      Debug_Printf("System Clock: 84 MHz (HSI fallback - HSE failed)\r\n\r\n");
+  }
+  else
+  {
+      Debug_Printf("System Clock: 84 MHz (HSE), USB CDC Ready\r\n\r\n");
+  }
+  HAL_Delay(10);
+
+  // Debug counter for periodic status output
+  uint16_t debug_counter = 0;
+  #define DEBUG_INTERVAL 200  // Print debug every 200 cycles (~1s at fast loop)
+
+  // TX diagnostics`
+  uint32_t tx_ok_count = 0;
+  uint32_t tx_fail_count = 0;
+  uint32_t tx_not_ready = 0;
+
 
   // SLEEP mode variables
   uint8_t sleep_mode_active = 1;  // Start in SLEEP mode for safety!
   uint8_t sleep_transition_steps = 0;
   uint8_t safety_check_passed = 0;
-  uint8_t last_s2_1_state = 0;
-  uint8_t s2_1_hold_counter = 0;
+  uint8_t last_s1_1_state = 0;
   uint8_t s1_1_hold_counter = 0;
+  uint8_t s1_2_hold_counter = 0;
+  uint8_t calibration_done = 0;
+  uint8_t s2_1_hold_counter = 0;
   uint8_t last_s0_state = 1;  // Track S0 state to detect S0 transitions (0→1)
 
-  #define SLEEP_TRANSITION_SPEED 10  // 10 steps = 100ms total transition (10ms per step, very responsive!)
-  #define S2_1_HOLD_REQUIRED 10      // 10 cycles x 100ms = 1 second hold required
-  #define S1_1_HOLD_REQUIRED 10      // 10 cycles x 100ms = 1 second hold required
+  #define SLEEP_TRANSITION_SPEED 10  // 10 steps transition
+  #define S1_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (exit SLEEP)
+  #define S1_2_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (calibration)
+  #define S2_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (start MOTOR)
 
   // Motor starter variables
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
 
   // Safety tolerances for exiting SLEEP mode
   #define JOYSTICK_CENTER 127
-  #define JOYSTICK_TOLERANCE 5   // ±5 points tolerance
+  #define JOYSTICK_TOLERANCE 25   // ±5 points tolerance
 
-  // Initialize M0 and M1 GPIO pins for LoRa (PB8=M0, PB9=M1)
+  // Initialize NRF24 GPIO pins (PC6=CSN, PC7=CE) - Manual init since not in IOC
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;  // PB8, PB9
+  GPIO_InitStruct.Pin = NRF_CSN_Pin | NRF_CE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  // Set initial states
+  HAL_GPIO_WritePin(NRF_CSN_GPIO_Port, NRF_CSN_Pin, GPIO_PIN_SET);    // CSN HIGH (inactive)
+  HAL_GPIO_WritePin(NRF_CE_GPIO_Port, NRF_CE_Pin, GPIO_PIN_RESET);    // CE LOW (inactive)
 
   // Initialize custom modules
   Var_Init();      // Initialize data structure dan sub-modules (joystick, switch)
-  USB_Init();      // Initialize USB CDC
 
-  // Initialize LoRa E220 module with M0=PB8, M1=PB9
-  LoRa_Init(&huart1, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9);
+  // Initialize NRF24L01+ module with CE=PC7, CSN=PC6
+  NRF24_Init(&hspi2, NRF_CE_GPIO_Port, NRF_CE_Pin, NRF_CSN_GPIO_Port, NRF_CSN_Pin);
 
-  // Welcome message
-  USB_Print("\r\n\r\n");
-  USB_Print("========================================\r\n");
-  USB_Print("   DEMOLITION ROBOT TRANSMITTER\r\n");
-  USB_Print("========================================\r\n");
-  USB_Print("Configuring LoRa E220...\r\n");
-
-  // Configure LoRa module
-  if (LoRa_Configure())
+  // Configure NRF24 module
+  if (NRF24_Configure())
   {
-      USB_Print("LoRa configured successfully!\r\n");
+      // NRF24 configured successfully - LED green ON briefly
+      HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
+      Debug_Printf("NRF24: OK\r\n");
+      HAL_Delay(200);
+      HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_RESET);
   }
   else
   {
-      USB_Print("LoRa configuration failed!\r\n");
+      // NRF24 configuration failed - LED red ON
+      HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_SET);
+      Debug_Printf("NRF24: FAIL (check wiring)\r\n");
   }
+  HAL_Delay(10);
 
-  USB_Print("LoRa E220 initialized - Ready to transmit\r\n");
-  USB_Print("========================================\r\n");
   HAL_Delay(50);
 
   // ========================================================================
   // WAIT FOR S0 = 1 BEFORE SYSTEM START (Emergency safety check)
   // ========================================================================
-  // System will NOT start until S0 switch is in NORMAL position (S0 = 1)
-  // This prevents starting system in EMERGENCY mode (S0 = 0)
-  // Ensures safe startup with emergency relay (PB8) in non-active state
-  USB_Print("Waiting for S0 switch in NORMAL position (not emergency)...\r\n");
-
+  Debug_Printf("Waiting for S0=1...\r\n");
+  HAL_Delay(10);
   while (1)
   {
       Var_Update();  // Read switch states
 
+      // Print raw S0 value for debugging
+      Debug_Printf("RAW S0=%d\r\n", tx_data.switches.s0);
+      HAL_Delay(10);
+
       if (tx_data.switches.s0 == 1)
       {
           // S0 is in NORMAL position - safe to start system!
-          USB_Print("S0 in NORMAL mode - Starting system...\r\n");
+          Debug_Printf("S0=1, System starting...\r\n");
+          HAL_Delay(10);
           break;  // Exit wait loop
       }
 
-      // S0 still in EMERGENCY position - keep waiting
-      HAL_Delay(100);
+      // S0 still in EMERGENCY position - keep waiting, blink red LED
+      HAL_GPIO_TogglePin(LED_R_GPIO_Port, LED_R_Pin);
+      HAL_Delay(500);
   }
+  HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET);
 
-  // Initialize OLED Display (128x64 I2C on PB6/PB7)
-  // NOTE: Make sure I2C1 is enabled in CubeMX first!
-  // PB6 = I2C1_SCL, PB7 = I2C1_SDA
-  OLED_Init(&hi2c1);
-  USB_Print("OLED Display initialized\r\n");
+  // Initialize OLED Display (128x64 I2C3 on PA8/PC9)
+  OLED_Init(&hi2c3);
 
   // Show splash screen
   OLED_ShowSplashScreen();
-  USB_Print("Splash screen shown\r\n");
+
+  Debug_Printf("Entering main loop...\r\n");
+  HAL_Delay(10);
 
   /* USER CODE END 2 */
 
@@ -207,21 +258,44 @@ int main(void)
     Var_Update();
 
     // ========================================================================
-    // S0 EMERGENCY SWITCH - Controls emergency relay (PB8) on robot
+    // DEBUG: Print RAW hardware values BEFORE any override (every DEBUG_INTERVAL)
     // ========================================================================
-    // S0 = 0: EMERGENCY MODE (transmit s0=0 → PB8 LOW → emergency relay aktif)
-    // S0 = 1: NORMAL MODE (transmit s0=1 → PB8 HIGH → emergency relay non-aktif)
-
-    if (tx_data.switches.s0 == 0)
+    if (++debug_counter >= DEBUG_INTERVAL)
     {
-        // ====================================================================
-        // S0 = 0 - EMERGENCY MODE
-        // ====================================================================
-        // Transmit s0 = 0 to trigger emergency relay (PB8 LOW) on robot
+        debug_counter = 0;
+        Debug_PrintTxData(&tx_data);  // Print RAW values here, before override
+        Debug_Printf("  NRF: ST=0x%02X | OK=%lu FAIL=%lu NRDY=%lu | LQ=%u%%\r\n",
+            NRF24_GetStatus(), tx_ok_count, tx_fail_count, tx_not_ready, NRF24_GetLinkQuality());
+    }
 
-        // Turn off OLED to save battery
-        OLED_Clear();
-        OLED_Update();
+    // ========================================================================
+    // S0 EMERGENCY SWITCH - Controls emergency relay on robot
+    // ========================================================================
+    // Also update tx_data.switches.s0 from interrupt flag
+    tx_data.switches.s0 = s0_emergency_flag ? 0 : 1;
+
+    if (s0_emergency_flag)
+    {
+        // S0 = 0 - EMERGENCY MODE
+        // First emergency after boot: just clear (avoid any text-render error
+        // before OLED is fully exercised). Subsequent emergencies show text.
+        // Re-draw periodically (every ~20 loops) so an I2C glitch self-recovers.
+        static uint8_t emergency_redraw_counter = 0;
+        static uint8_t emergency_first_event = 1;
+        if (last_s0_state != 0 || ++emergency_redraw_counter >= 20)
+        {
+            emergency_redraw_counter = 0;
+            OLED_Clear();
+            if (!emergency_first_event)
+            {
+                OLED_SetCursor(8, 16);
+                OLED_WriteString("EMERGENCY", FONT_SIZE_NORMAL);
+                OLED_SetCursor(32, 36);
+                OLED_WriteString("STOP", FONT_SIZE_LARGE);
+            }
+            OLED_Update();
+            emergency_first_event = 0;
+        }
 
         // Override all controls to SAFE values for emergency
         tx_data.joystick.left_x  = 127;
@@ -229,7 +303,7 @@ int main(void)
         tx_data.joystick.right_x = 127;
         tx_data.joystick.right_y = 127;
 
-        // All switches to 0 (except s0 which remains 0 for emergency signal)
+        // All switches to 0
         tx_data.switches.joy_left_btn1  = 0;
         tx_data.switches.joy_left_btn2  = 0;
         tx_data.switches.joy_right_btn1 = 0;
@@ -244,56 +318,45 @@ int main(void)
         tx_data.switches.s5_2 = 0;
         tx_data.switches.motor_active = 0;
 
-        // Remember S0 was OFF
         last_s0_state = 0;
-
-        // Reset all system variables (emergency state)
         sleep_mode_active = 1;
         sleep_transition_steps = 0;
         safety_check_passed = 0;
-        s2_1_hold_counter = 0;
         s1_1_hold_counter = 0;
+        s1_2_hold_counter = 0;
+        calibration_done = 0;
+        s2_1_hold_counter = 0;
         motor_active = 0;
 
-        // IMPORTANT: Continue to transmit s0 = 0 (DO NOT skip transmission!)
+        // Red LED ON for emergency
+        HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_SET);
     }
     else
     {
-        // ====================================================================
         // S0 = 1 - NORMAL MODE
-        // ====================================================================
-        // Check if S0 just transitioned from 0→1 (recovery from emergency)
+        HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET);
+
         if (last_s0_state == 0)
         {
-            // S0 switched from emergency to normal! Show splash screen
-            USB_Print("S0 switched ON - Recovery from emergency\r\n");
             OLED_ShowSplashScreen();
-            HAL_Delay(1000);  // Display splash for 1 second
+            // No HAL_Delay here - blocking would freeze emergency response
             last_s0_state = 1;
-
-            // Reset all system variables (fresh start after emergency)
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
             safety_check_passed = 0;
-            s2_1_hold_counter = 0;
             s1_1_hold_counter = 0;
+            s1_2_hold_counter = 0;
+            calibration_done = 0;
+            s2_1_hold_counter = 0;
             motor_active = 0;
-
-            USB_Print("System restarted - Entering SLEEP mode\r\n");
         }
     }
 
     // ========================================================================
     // SLEEP MODE - Safety Feature with Safety Interlock
     // ========================================================================
-
     if (sleep_mode_active)
     {
-        // ====================================================================
-        // S0 = 1, but still in SLEEP mode - Check Safety Interlock to Exit
-        // ====================================================================
-
-        // Step 1: Check if all controls are in SAFE position
         uint8_t joystick_safe = 0;
         uint8_t switches_safe = 0;
 
@@ -310,18 +373,13 @@ int main(void)
             joystick_safe = 1;
         }
 
-        // Check all switches are 0 (except S0 and S2_1 which are excluded)
-        // S0 is emergency button (already checked above)
-        // S2_1 is excluded so user can press S2_1 to exit SLEEP mode
-        // S2_2 must still be OFF for safety
+        // Check all switches are 0 (except S0, S1_1 for exit SLEEP, S1_2 for calibration)
         if ((tx_data.switches.joy_left_btn1  == 0) &&
             (tx_data.switches.joy_left_btn2  == 0) &&
             (tx_data.switches.joy_right_btn1 == 0) &&
             (tx_data.switches.joy_right_btn2 == 0) &&
-            (tx_data.switches.s1_1 == 0) &&
-            (tx_data.switches.s1_2 == 0) &&
-            // S2_1 NOT checked - used to exit SLEEP mode
-            (tx_data.switches.s2_2 == 0) &&  // S2_2 must be OFF
+            (tx_data.switches.s2_1 == 0) &&
+            (tx_data.switches.s2_2 == 0) &&
             (tx_data.switches.s4_1 == 0) &&
             (tx_data.switches.s4_2 == 0) &&
             (tx_data.switches.s5_1 == 0) &&
@@ -330,40 +388,48 @@ int main(void)
             switches_safe = 1;
         }
 
-        // Step 2: If all safety checks pass, wait for S2_1 HOLD to exit SLEEP mode
         if (joystick_safe && switches_safe)
         {
             safety_check_passed = 1;
 
-            // S2_1 must be held for S2_1_HOLD_REQUIRED cycles (2 seconds)
-            if (tx_data.switches.s2_1 == 1)
+            // S1_2 = Joystick Calibration (in SLEEP mode only, hold to calibrate, once only)
+            if (!calibration_done && tx_data.switches.s1_2 == 1)
             {
-                // S2_1 is pressed - increment hold counter
-                s2_1_hold_counter++;
-
-                // Check if held long enough
-                if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
+                s1_2_hold_counter++;
+                if (s1_2_hold_counter >= S1_2_HOLD_REQUIRED)
                 {
-                    // S2_1 held for 2 seconds - EXIT SLEEP MODE!
+                    Joystick_Calibrate();
+                    calibration_done = 1;
+                    s1_2_hold_counter = 0;
+                }
+            }
+            else if (!calibration_done)
+            {
+                s1_2_hold_counter = 0;
+            }
+
+            if (tx_data.switches.s1_1 == 1)
+            {
+                s1_1_hold_counter++;
+                if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
+                {
                     sleep_mode_active = 0;
                     sleep_transition_steps = 0;
-                    s2_1_hold_counter = 0;  // Reset counter
+                    s1_1_hold_counter = 0;
                 }
             }
             else
             {
-                // S2_1 released before hold time completed - reset counter
-                s2_1_hold_counter = 0;
+                s1_1_hold_counter = 0;
             }
-
-            last_s2_1_state = tx_data.switches.s2_1;
+            last_s1_1_state = tx_data.switches.s1_1;
         }
         else
         {
-            // Safety check failed - reset state
             safety_check_passed = 0;
-            last_s2_1_state = 0;
-            s2_1_hold_counter = 0;
+            last_s1_1_state = 0;
+            s1_1_hold_counter = 0;
+            s1_2_hold_counter = 0;
 
             // Override transmitted data to safe values during SLEEP
             tx_data.joystick.left_x  = 127;
@@ -371,7 +437,6 @@ int main(void)
             tx_data.joystick.right_x = 127;
             tx_data.joystick.right_y = 127;
 
-            // All switches to 0
             tx_data.switches.joy_left_btn1  = 0;
             tx_data.switches.joy_left_btn2  = 0;
             tx_data.switches.joy_right_btn1 = 0;
@@ -388,71 +453,59 @@ int main(void)
     }
     else
     {
-        // ====================================================================
-        // Normal operation - S0 = 1 and not in SLEEP mode
-        // ====================================================================
-        // Use actual sensor readings (already in tx_data from Var_Update)
         safety_check_passed = 0;
-        last_s2_1_state = tx_data.switches.s2_1;
+        last_s1_1_state = tx_data.switches.s1_1;
     }
 
     // ========================================================================
-    // MOTOR STARTER CONTROL - S1_1 HOLD (1 second) - SELF-HOLDING
+    // MOTOR STARTER CONTROL - S2_1 HOLD - SELF-HOLDING
     // ========================================================================
-    // Flow: SLEEP → Safety OK → Hold S2_1 (1s) → Exit SLEEP → Hold S1_1 (1s) → Motor ON (LATCHED)
-    // Motor remains ON even after S1_1 is released (self-holding relay behavior)
-    // Motor only turns OFF when entering SLEEP mode
-
     if (!sleep_mode_active)
     {
-        // Not in SLEEP mode - motor control allowed
-        if (tx_data.switches.s1_1 == 1)
+        if (tx_data.switches.s2_1 == 1)
         {
-            // S1_1 is pressed - increment hold counter
-            s1_1_hold_counter++;
-
-            // Check if held long enough
-            if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
+            s2_1_hold_counter++;
+            if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
             {
-                // S1_1 held for 1 second - ACTIVATE MOTOR! (Latched/Self-holding)
                 motor_active = 1;
             }
         }
         else
         {
-            // S1_1 released - Motor stays ON (self-holding), just reset counter
-            s1_1_hold_counter = 0;  // Reset counter for next time
-            // Note: motor_active remains unchanged (stays ON if it was ON)
+            s2_1_hold_counter = 0;
         }
     }
     else
     {
-        // In SLEEP mode - force motor OFF (only way to stop motor)
         motor_active = 0;
-        s1_1_hold_counter = 0;
+        s2_1_hold_counter = 0;
     }
 
     // Update motor state in tx_data before transmission
     tx_data.switches.motor_active = motor_active;
 
-    // Transmit via LoRa using BINARY format (FAST! No parsing needed)
-    // Binary is much faster than CSV - only 8 bytes, direct copy
-    if (LoRa_IsReady())
+    // Transmit via NRF24 using BINARY format (8 bytes)
+    if (NRF24_IsReady())
     {
-        LoRa_SendBinary(Var_GetBinaryData(), Var_GetDataSize());
+        if (NRF24_SendBinary(Var_GetBinaryData(), Var_GetDataSize()))
+        {
+            tx_ok_count++;
+            // Transmission success - brief green LED blink
+            HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
+        }
+        else
+        {
+            tx_fail_count++;
+            // Transmission failed - blue LED
+            HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin, GPIO_PIN_SET);
+        }
+    }
+    else
+    {
+        tx_not_ready++;
     }
 
-    // Print data ke USB untuk debugging (less frequently)
-    static uint8_t usb_counter = 0;
-    if (++usb_counter >= 5)  // Print USB every 5 cycles (500ms)
-    {
-        usb_counter = 0;
-        USB_PrintData(&tx_data);
-    }
-
-    // Update OLED display with mode info and percentages (every 10 cycles = 1 second)
-    // Update immediately when entering/exiting SLEEP mode, safety status changes, or hold progress changes
-    // IMPORTANT: Only update OLED when S0 = 1 (NORMAL mode), not in EMERGENCY mode (S0 = 0)
+    // Update OLED display (every 10 cycles = ~500ms)
     if (tx_data.switches.s0 == 1)
     {
         static uint8_t oled_counter = 0;
@@ -460,13 +513,15 @@ int main(void)
         static uint8_t last_safety_state = 0;
         static uint8_t last_hold_counter = 0;
         static uint8_t last_motor_state = 0;
+        static uint8_t last_cal_state = 0;
 
-        uint8_t current_hold_progress = sleep_mode_active ? s2_1_hold_counter : s1_1_hold_counter;
+        uint8_t current_hold_progress = sleep_mode_active ? s1_1_hold_counter : s2_1_hold_counter;
 
         if (sleep_mode_active != last_sleep_state ||
             safety_check_passed != last_safety_state ||
             current_hold_progress != last_hold_counter ||
             motor_active != last_motor_state ||
+            s1_2_hold_counter != last_cal_state ||
             ++oled_counter >= 10)
         {
             oled_counter = 0;
@@ -474,13 +529,19 @@ int main(void)
             last_safety_state = safety_check_passed;
             last_hold_counter = current_hold_progress;
             last_motor_state = motor_active;
-            OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active);
+            last_cal_state = s1_2_hold_counter;
+            uint8_t cal_progress = calibration_done ? 255 : s1_2_hold_counter;  // 255 = done
+            uint8_t link_quality = NRF24_GetLinkQuality();  // 0-100 from robot Auto-ACK
+            OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active, cal_progress, link_quality);
             OLED_Update();
         }
     }
 
+    // Turn off LEDs after brief indication
+    HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin, GPIO_PIN_RESET);
 
-    HAL_Delay(100);
+    // No delay — transmit as fast as possible
   }
   /* USER CODE END 3 */
 }
@@ -493,26 +554,64 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  HAL_StatusTypeDef status = HAL_ERROR;
+  const uint8_t HSE_MAX_ATTEMPTS = 5;
 
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+  /** Try HSE first (8 MHz crystal → PLL → 84 MHz SYSCLK, 48 MHz USB).
+   *  HSE can fail to start when VDD ramps up slowly (e.g. external 5V supply).
+   *  Retry up to HSE_MAX_ATTEMPTS times, cycling HSE off/on between attempts
+   *  to let the crystal oscillator restart cleanly.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 15;
-  RCC_OscInitStruct.PLL.PLLN = 144;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-  RCC_OscInitStruct.PLL.PLLQ = 5;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  RCC_OscInitStruct.PLL.PLLQ = 7;
+
+  for (uint8_t attempt = 0; attempt < HSE_MAX_ATTEMPTS; attempt++)
   {
-    Error_Handler();
+    status = HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    if (status == HAL_OK)
+    {
+      break;
+    }
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+    HAL_Delay(50);  // SysTick runs on HSI here, so HAL_Delay still works
+  }
+
+  /** Fallback to HSI (16 MHz) if HSE never started.
+   *  PLL re-tuned so SYSCLK still = 84 MHz and USB still = 48 MHz:
+   *    VCO_in = HSI/PLLM = 16/16 = 1 MHz (same as HSE/8)
+   *  Note: HSI tolerance (~1%) does not meet USB-CDC spec (±0.25%);
+   *  USB may be unreliable in this fallback mode, but SPI/NRF24/OLED work fine.
+   */
+  if (status != HAL_OK)
+  {
+    clock_source_is_hsi = 1;
+
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLM = 16;
+    RCC_OscInitStruct.PLL.PLLN = 336;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+    RCC_OscInitStruct.PLL.PLLQ = 7;
+
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -524,13 +623,14 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
 }
 
 /* USER CODE BEGIN 4 */
+#include <stdarg.h>
 
 /* USER CODE END 4 */
 
