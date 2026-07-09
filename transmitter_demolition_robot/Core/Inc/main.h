@@ -59,8 +59,16 @@ extern volatile uint8_t s0_emergency_flag;  // Set by EXTI0 interrupt when S0=0
 /* Private defines -----------------------------------------------------------*/
 #define S1_2_Pin GPIO_PIN_5
 #define S1_2_GPIO_Port GPIOE
-#define S1_1_Pin GPIO_PIN_3
+/* S1_1 moved from PE3 to PE4: on the F407 Discovery, PE3 is hard-wired to the
+ * onboard LIS302DL/LIS3DSH accelerometer chip-select. With the switch's
+ * pull-down, idle = PE3 LOW = accelerometer SELECTED, and it sits on the
+ * shared PA5/PA7 lines - corrupting the right-joystick ADC readings (CYL4
+ * "98%" bug). PE4 is the adjacent header pin with no onboard function.
+ * PE3 is now driven HIGH permanently in MX_GPIO_ConfigureSwitchPullDown(). */
+#define S1_1_Pin GPIO_PIN_4
 #define S1_1_GPIO_Port GPIOE
+#define MEMS_CS_Pin GPIO_PIN_3
+#define MEMS_CS_GPIO_Port GPIOE
 #define PC14_OSC32_IN_Pin GPIO_PIN_14
 #define PC14_OSC32_IN_GPIO_Port GPIOC
 #define PC15_OSC32_OUT_Pin GPIO_PIN_15
