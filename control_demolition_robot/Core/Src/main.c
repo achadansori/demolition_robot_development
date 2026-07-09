@@ -302,6 +302,14 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
+  /* Try HSE first (8 MHz) -> PLL -> 168 MHz. At COLD power-on the 8 MHz
+   * source can be late (slow VDD ramp / ST-LINK MCO not running yet), so a
+   * single attempt fails and the board hangs in Error_Handler until the
+   * reset button is pressed. Retry a few times, cycling HSE off/on, exactly
+   * like the receiver board already does. */
+  HAL_StatusTypeDef status = HAL_ERROR;
+  const uint8_t HSE_MAX_ATTEMPTS = 5;
+
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -310,9 +318,38 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 7;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  for (uint8_t attempt = 0; attempt < HSE_MAX_ATTEMPTS; attempt++)
   {
-    Error_Handler();
+    status = HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    if (status == HAL_OK)
+    {
+      break;
+    }
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+    HAL_Delay(50);  /* SysTick still runs on HSI here, so HAL_Delay works */
+  }
+
+  /* Fallback to HSI (16 MHz) if HSE never started. PLL re-tuned so SYSCLK
+   * stays 168 MHz (VCO_in = HSI/16 = 1 MHz, same as HSE/8): CAN bit timing,
+   * timer clocks and PWM frequency are all unchanged. */
+  if (status != HAL_OK)
+  {
+    clock_source_is_hsi = 1;
+
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLM = 16;
+    RCC_OscInitStruct.PLL.PLLN = 336;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+    RCC_OscInitStruct.PLL.PLLQ = 7;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
