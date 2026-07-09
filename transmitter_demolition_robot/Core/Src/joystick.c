@@ -48,9 +48,13 @@
 /* Battery smoothing:
  *   EMA alpha = 1/64 -> ~64 samples time-constant (heavy filter against ADC noise)
  *   Hysteresis = 2% -> only update displayed percent if change >= 2 points
+ *   Display rate limit -> the shown value is re-latched at most once every
+ *   BATTERY_UPDATE_INTERVAL_MS, so the OLED percent/bar changes slowly enough
+ *   to be read by eye. The EMA keeps integrating every sample in between.
  */
-#define BATTERY_EMA_SHIFT        6U      // alpha = 1/(2^6) = 1/64
-#define BATTERY_HYSTERESIS_PCT   2U
+#define BATTERY_EMA_SHIFT           6U     // alpha = 1/(2^6) = 1/64
+#define BATTERY_HYSTERESIS_PCT      2U
+#define BATTERY_UPDATE_INTERVAL_MS  2000U  // displayed value updates max 1x per 2 s
 
 /* DMA Buffer - Filled automatically by DMA */
 uint16_t adc_buffer[ADC_CHANNELS] = {0};
@@ -81,6 +85,7 @@ static uint8_t calculate_battery_percent(uint16_t adc_raw)
     static uint32_t ema_acc = 0;
     static uint8_t  ema_init = 0;
     static uint8_t  last_pct = 0;
+    static uint32_t last_update_ms = 0;
 
     if (!ema_init)
     {
@@ -91,6 +96,18 @@ static uint8_t calculate_battery_percent(uint16_t adc_raw)
     {
         ema_acc = ema_acc - (ema_acc >> BATTERY_EMA_SHIFT) + adc_raw;
     }
+
+    // Rate limit: between update windows just hold the last shown value so
+    // the percent/bar on the OLED is stable long enough to actually read.
+    // (ema_init doubles as "first call": latch immediately so the display
+    // shows a real value right after boot instead of 0% for 2 seconds.)
+    uint32_t now = HAL_GetTick();
+    if (last_update_ms != 0 && (now - last_update_ms) < BATTERY_UPDATE_INTERVAL_MS)
+    {
+        return last_pct;
+    }
+    last_update_ms = now | 1u;  // |1 so the timestamp is never 0
+
     uint16_t filtered = (uint16_t)(ema_acc >> BATTERY_EMA_SHIFT);
 
     // Convert filtered ADC to battery voltage (mV)
