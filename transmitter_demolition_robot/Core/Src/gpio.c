@@ -165,7 +165,19 @@ void MX_GPIO_ConfigureSwitchPullDown(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    // GPIOE switches: S1_1, S1_2, S2_1
+    // PE3 = onboard accelerometer chip-select (Discovery hard-wiring).
+    // Drive it HIGH permanently so the MEMS stays OFF the shared PA5/PA7
+    // lines used by the right joystick ADC (was the cause of the CYL4 "98%"
+    // bug when S1_1 lived on PE3 with a pull-down). S1_1 now lives on PE4.
+    HAL_GPIO_WritePin(MEMS_CS_GPIO_Port, MEMS_CS_Pin, GPIO_PIN_SET);
+    GPIO_InitStruct.Pin = MEMS_CS_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(MEMS_CS_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_WritePin(MEMS_CS_GPIO_Port, MEMS_CS_Pin, GPIO_PIN_SET);
+
+    // GPIOE switches: S1_1 (PE4), S1_2 (PE5), S2_1 (PE1)
     GPIO_InitStruct.Pin = S1_2_Pin | S1_1_Pin | S2_1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
