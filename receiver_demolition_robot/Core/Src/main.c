@@ -131,7 +131,21 @@ int main(void)
   MX_NRF24_GPIO_Init();
 
   NRF24_Init(&hspi1, NRF_CE_GPIO_Port, NRF_CE_Pin, NRF_CSN_GPIO_Port, NRF_CSN_Pin);
-  NRF24_Configure();
+
+  /* At COLD power-on the NRF24 module's supply can still be ramping when the
+   * MCU gets here, so a single Configure() fails silently and the radio never
+   * comes up (symptom: receiver needs its reset button pressed once before
+   * the link works - an MCU-only reset retries while the module is already
+   * powered). Configure() verifies its CONFIG readback, so retry until it
+   * reports success. Boot-time only; no effect on the running loop. */
+  for (uint8_t attempt = 0; attempt < 10; attempt++)
+  {
+    if (NRF24_Configure())
+    {
+      break;
+    }
+    HAL_Delay(100);
+  }
   NRF24_StartListening();
 
   /* USER CODE END 2 */
