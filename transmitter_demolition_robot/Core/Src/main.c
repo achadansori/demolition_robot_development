@@ -531,7 +531,21 @@ int main(void)
             last_motor_state = motor_active;
             last_cal_state = s1_2_hold_counter;
             uint8_t cal_progress = calibration_done ? 255 : s1_2_hold_counter;  // 255 = done
-            uint8_t link_quality = NRF24_GetLinkQuality();  // 0-100 from robot Auto-ACK
+
+            // Link quality (0-100 from robot Auto-ACK): the raw rolling
+            // average jumps on nearly every packet, so the "XX%" text next to
+            // the signal bars changed too fast to read. Latch the displayed
+            // value at most once every 2 s (the underlying measurement keeps
+            // running at full rate).
+            static uint8_t  lq_shown = 0;
+            static uint32_t lq_last_ms = 0;
+            uint32_t lq_now = HAL_GetTick();
+            if (lq_last_ms == 0u || (lq_now - lq_last_ms) >= 2000u)
+            {
+                lq_shown = NRF24_GetLinkQuality();
+                lq_last_ms = lq_now | 1u;  // |1 so the timestamp is never 0
+            }
+            uint8_t link_quality = lq_shown;
             OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active, cal_progress, link_quality);
             OLED_Update();
         }
