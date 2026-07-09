@@ -533,17 +533,35 @@ int main(void)
             uint8_t cal_progress = calibration_done ? 255 : s1_2_hold_counter;  // 255 = done
 
             // Link quality (0-100 from robot Auto-ACK): the raw rolling
-            // average jumps on nearly every packet, so the "XX%" text next to
-            // the signal bars changed too fast to read. Latch the displayed
-            // value at most once every 2 s (the underlying measurement keeps
-            // running at full rate).
+            // average jumps on nearly every packet - unreadable. Instead of
+            // latching it (which made the value JUMP every 2 s), glide the
+            // displayed value toward the live measurement at max ~10 points
+            // per second: changes appear as a smooth, easy-to-follow ramp.
+            // The underlying measurement keeps running at full rate.
             static uint8_t  lq_shown = 0;
+            static uint8_t  lq_init = 0;
             static uint32_t lq_last_ms = 0;
             uint32_t lq_now = HAL_GetTick();
-            if (lq_last_ms == 0u || (lq_now - lq_last_ms) >= 2000u)
+            if (!lq_init)
             {
-                lq_shown = NRF24_GetLinkQuality();
-                lq_last_ms = lq_now | 1u;  // |1 so the timestamp is never 0
+                lq_shown = NRF24_GetLinkQuality();  // first frame: show real value
+                lq_init = 1;
+                lq_last_ms = lq_now;
+            }
+            else
+            {
+                // Allowed movement = 1 point per 100 ms elapsed (10 points/s)
+                uint32_t step = (lq_now - lq_last_ms) / 100u;
+                if (step > 0u)
+                {
+                    if (step > 10u) step = 10u;
+                    lq_last_ms = lq_now;
+
+                    uint8_t target = NRF24_GetLinkQuality();
+                    if (lq_shown + step < target)      lq_shown += (uint8_t)step;
+                    else if (lq_shown > target + step) lq_shown -= (uint8_t)step;
+                    else                               lq_shown = target;
+                }
             }
             uint8_t link_quality = lq_shown;
             OLED_ShowModeScreen(tx_data.switches.s5_1, tx_data.switches.s5_2, (uint8_t*)&tx_data.joystick, sleep_mode_active, safety_check_passed, current_hold_progress, motor_active, cal_progress, link_quality);
