@@ -1,17 +1,16 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : var.h
   * @brief          : Header for var.c file - Binary data structure
+  *                   STM32F407 Discovery Transmitter with NRF24
   ******************************************************************************
   * @attention
   *
-  * Struktur data biner untuk transmisi LoRa yang efisien
-  * Total size: 8 bytes (sangat kecil untuk LoRa transmission)
+  * Struktur data biner untuk transmisi NRF24 yang efisien
+  * Total size: 8 bytes (sama dengan format LoRa)
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 
 #ifndef __VAR_H
 #define __VAR_H
@@ -35,8 +34,8 @@ typedef struct {
     uint8_t left_y;          // Joystick kiri sumbu Y (0-255)
     uint8_t right_x;         // Joystick kanan sumbu X (0-255)
     uint8_t right_y;         // Joystick kanan sumbu Y (0-255)
-    uint8_t r8;              // Potentiometer R8 (0-255)
-    uint8_t battery_percent; // Battery percentage (0-100%)
+    uint8_t battery_percent; // Battery level 0-100% (PA0, via voltage divider)
+    uint8_t reserved;        // Reserved (was R1/R8 pots, removed)
 } __attribute__((packed)) Joystick_Data_t;
 
 /**
@@ -58,13 +57,13 @@ typedef struct {
     uint8_t s4_2            : 1;  // Bit 10
     uint8_t s5_1            : 1;  // Bit 11
     uint8_t s5_2            : 1;  // Bit 12
-    uint8_t motor_active    : 1;  // Bit 13 - Motor starter trigger (PE6 PWM control)
+    uint8_t motor_active    : 1;  // Bit 13 - Motor starter trigger
     uint8_t reserved        : 2;  // Bit 14-15 (reserved untuk ekspansi)
 } __attribute__((packed)) Switch_Data_t;
 
 /**
  * @brief Struktur data lengkap transmitter (8 bytes total)
- * Ini adalah paket data yang akan dikirim via LoRa
+ * Ini adalah paket data yang akan dikirim via NRF24
  */
 typedef struct {
     Joystick_Data_t joystick;  // 6 bytes
@@ -79,7 +78,6 @@ void Var_Init(void);
 void Var_Update(void);
 uint8_t* Var_GetBinaryData(void);
 uint16_t Var_GetDataSize(void);
-const char* Var_GetCSVString(void);  // Get CSV format string (proven to work)
 
 #ifdef __cplusplus
 }

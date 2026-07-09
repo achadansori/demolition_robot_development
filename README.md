@@ -1,1 +1,0 @@
-# bismillah_demolition_robot_development

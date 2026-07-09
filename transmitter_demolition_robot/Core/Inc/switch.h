@@ -1,17 +1,31 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : switch.h
   * @brief          : Header for switch.c file - Switch/Button reading
+  *                   STM32F407 Discovery Transmitter
   ******************************************************************************
   * @attention
   *
   * Module untuk membaca status semua switch dan button digital
   * Mengemas 13 input dalam struktur 2-byte yang efisien
   *
+  * Pin Configuration:
+  * - JOY_LEFT_BTN1:  PA3
+  * - JOY_LEFT_BTN2:  PA1
+  * - JOY_RIGHT_BTN1: PB1
+  * - JOY_RIGHT_BTN2: PC5
+  * - S0:             PB0
+  * - S1_1:           PE3
+  * - S1_2:           PE5
+  * - S2_1:           PE1
+  * - S2_2:           PB8
+  * - S4_1:           PD6
+  * - S4_2:           PB3
+  * - S5_1:           PB5
+  * - S5_2:           PB7
+  *
   ******************************************************************************
   */
-/* USER CODE END Header */
 
 #ifndef __SWITCH_H
 #define __SWITCH_H
