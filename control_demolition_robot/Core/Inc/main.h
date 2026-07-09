@@ -53,7 +53,10 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+/* Force all actuator outputs to their safe state (direct register access,
+ * callable from any fault handler). Implemented in main.c, also used by the
+ * Cortex-M fault handlers in stm32f4xx_it.c. */
+void Failsafe_EmergencyOutputs(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

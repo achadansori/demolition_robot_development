@@ -195,8 +195,11 @@ bool NRF24_Configure(void)
     // No retransmit (auto-ack disabled)
     NRF24_WriteRegister(NRF24_REG_SETUP_RETR, 0x00);
 
-    // Set RX address pipe 0 (must match TX address)
-    uint8_t rx_addr[5] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};
+    // Set RX address pipe 0 (must match TX address).
+    // Unique pair address - NOT the chip default (0xE7 x5) so a foreign
+    // NRF24 with default/demo firmware can never command this robot.
+    // MUST match NRF24_ADDR in transmitter_demolition_robot/Core/Src/nrf24.c.
+    uint8_t rx_addr[5] = {0xD3, 0x7A, 0x4C, 0xA5, 0x62};
     NRF24_WriteRegisterMulti(NRF24_REG_RX_ADDR_P0, rx_addr, 5);
 
     // Set TX address (for ACK packets)

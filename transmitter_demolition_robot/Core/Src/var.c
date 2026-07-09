@@ -52,6 +52,17 @@ void Var_Update(void)
 
     // Read switch data
     Switch_Read(&tx_data.switches);
+
+    // Freshness counter (byte 5): must keep incrementing even in SLEEP or
+    // EMERGENCY so the control board can tell "live link carrying safe values"
+    // apart from "stale data replayed by a hung bridge". The main-loop safety
+    // overrides never touch this byte.
+    static uint8_t tx_counter = 0;
+    tx_data.joystick.tx_counter = ++tx_counter;
+
+    // Packet signature (bits 14-15 of the switch field). Switch_Read clears
+    // it, so stamp it here where the packet is finalized.
+    tx_data.switches.reserved = VAR_PACKET_SIGNATURE;
 }
 
 /**

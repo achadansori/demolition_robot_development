@@ -35,7 +35,10 @@ typedef struct {
     uint8_t right_x;         // Joystick kanan sumbu X (0-255)
     uint8_t right_y;         // Joystick kanan sumbu Y (0-255)
     uint8_t battery_percent; // Battery level 0-100% (PA0, via voltage divider)
-    uint8_t reserved;        // Reserved (was R1/R8 pots, removed)
+    uint8_t tx_counter;      // Rolling freshness counter, +1 per transmit loop.
+                             // The control board declares the link stale (fail
+                             // safe) if this stops changing, which catches a
+                             // hung bridge that keeps re-sending old data.
 } __attribute__((packed)) Joystick_Data_t;
 
 /**
@@ -58,7 +61,10 @@ typedef struct {
     uint8_t s5_1            : 1;  // Bit 11
     uint8_t s5_2            : 1;  // Bit 12
     uint8_t motor_active    : 1;  // Bit 13 - Motor starter trigger
-    uint8_t reserved        : 2;  // Bit 14-15 (reserved untuk ekspansi)
+    uint8_t reserved        : 2;  // Bit 14-15: packet signature, must be 0b10
+                                  // (VAR_PACKET_SIGNATURE). The control board
+                                  // rejects packets without it (guards against
+                                  // a foreign/incompatible transmitter).
 } __attribute__((packed)) Switch_Data_t;
 
 /**
@@ -69,6 +75,9 @@ typedef struct {
     Joystick_Data_t joystick;  // 6 bytes
     Switch_Data_t switches;     // 2 bytes
 } __attribute__((packed)) Transmitter_Data_t;
+
+/* Exported constants --------------------------------------------------------*/
+#define VAR_PACKET_SIGNATURE  2u  /* value of switches.reserved (bits 14-15) */
 
 /* Exported variables --------------------------------------------------------*/
 extern Transmitter_Data_t tx_data;

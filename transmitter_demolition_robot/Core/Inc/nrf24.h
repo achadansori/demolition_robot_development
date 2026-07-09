@@ -32,6 +32,7 @@ bool NRF24_Configure(void);
 bool NRF24_SendBinary(const uint8_t* data, uint16_t size);
 bool NRF24_IsConnected(void);
 bool NRF24_IsReady(void);
+bool NRF24_VerifyConfig(void);  // CONFIG register still valid (powered up, TX mode, CRC on)
 uint8_t NRF24_GetStatus(void);
 uint8_t NRF24_GetLinkQuality(void);  // Rolling link quality 0-100 from ACK results
 

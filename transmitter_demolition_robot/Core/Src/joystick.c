@@ -32,6 +32,21 @@
 /* Private define ------------------------------------------------------------*/
 #define ADC_MAX_VALUE 4095  // 12-bit ADC maximum value
 
+/* Joystick wiring-fault (plausibility) detection ------------------------------
+ * A broken wiper wire or a short reads the EXACT ADC rail (0 or 4095) with no
+ * noise. A real pot at full mechanical deflection has series resistance and
+ * ADC noise, so it does not sit pinned within 0.2% of the rail for long.
+ * If an axis stays hard at a rail for JOY_FAULT_SET_MS it is declared faulted
+ * and forced to neutral (127) so a broken wire cannot command full speed.
+ * Any single sample off the rail resets the fault timer (legit full stick with
+ * normal ADC noise will keep resetting it). Set JOY_FAULT_DETECT_ENABLED 0 to
+ * disable if your pots really reach the exact rails in normal use. */
+#define JOY_FAULT_DETECT_ENABLED  1
+#define JOY_FAULT_RAIL_LOW        8U     /* raw12 <= this -> at GND rail  */
+#define JOY_FAULT_RAIL_HIGH       4087U  /* raw12 >= this -> at VDD rail  */
+#define JOY_FAULT_SET_MS          400U   /* rail held this long -> fault  */
+#define JOY_FAULT_CLEAR_MS        200U   /* plausible this long -> clear  */
+
 /* Battery measurement configuration (PA0 via voltage divider)
  * Default: 2S Li-ion / LiPo (6.0V - 8.4V), 3:1 divider (R_top=20k, R_bot=10k)
  * Adjust these to match your actual battery + resistor values.
@@ -142,6 +157,59 @@ static uint8_t median3_filter(uint8_t axis, uint8_t curr)
     return b;
 }
 
+/**
+  * @brief  Detect a wiring fault on one joystick axis (value pinned at an ADC
+  *         rail). Returns 1 while the axis is considered faulted.
+  * @param  axis:  Axis index 0-3
+  * @param  raw12: Raw 12-bit ADC sample for this axis
+  * @retval 1 = axis faulted (force neutral), 0 = axis healthy
+  */
+static uint8_t joystick_axis_faulted(uint8_t axis, uint16_t raw12)
+{
+#if JOY_FAULT_DETECT_ENABLED
+    static uint32_t rail_since[4]  = {0, 0, 0, 0};  /* 0 = not at rail   */
+    static uint32_t clear_since[4] = {0, 0, 0, 0};  /* 0 = not recovering */
+    static uint8_t  faulted[4]     = {0, 0, 0, 0};
+
+    uint32_t now = HAL_GetTick();
+    uint8_t at_rail = (raw12 <= JOY_FAULT_RAIL_LOW) || (raw12 >= JOY_FAULT_RAIL_HIGH);
+
+    if (at_rail)
+    {
+        clear_since[axis] = 0;
+        if (rail_since[axis] == 0)
+        {
+            rail_since[axis] = now | 1u;  /* |1 so the timestamp is never 0 */
+        }
+        else if (!faulted[axis] && (now - rail_since[axis]) >= JOY_FAULT_SET_MS)
+        {
+            faulted[axis] = 1;
+        }
+    }
+    else
+    {
+        rail_since[axis] = 0;
+        if (faulted[axis])
+        {
+            if (clear_since[axis] == 0)
+            {
+                clear_since[axis] = now | 1u;
+            }
+            else if ((now - clear_since[axis]) >= JOY_FAULT_CLEAR_MS)
+            {
+                faulted[axis] = 0;
+                clear_since[axis] = 0;
+            }
+        }
+    }
+
+    return faulted[axis];
+#else
+    (void)axis; (void)raw12;
+    return 0;
+#endif
+}
+
 static uint8_t apply_calibration(uint8_t raw8, int8_t offset)
 {
     if (offset == 0) return raw8;
@@ -211,18 +279,31 @@ void Joystick_Read(Joystick_Data_t* data)
     // [4] = battery     (PA0 - IN0) via voltage divider
     // (PA2 not in scan anymore - removed to kill cross-talk noise)
 
+    // Snapshot the DMA buffer once (12-bit) for fault detection + conversion
+    uint16_t raw12[4];
+    raw12[0] = adc_buffer[0];
+    raw12[1] = adc_buffer[1];
+    raw12[2] = adc_buffer[2];
+    raw12[3] = adc_buffer[3];
+
     // Convert 12-bit to 8-bit, apply median-of-3 glitch filter, then calibration
-    uint8_t raw_lx = (uint8_t)(adc_buffer[0] >> 4);
-    uint8_t raw_ly = (uint8_t)(adc_buffer[1] >> 4);
-    uint8_t raw_ry = (uint8_t)(adc_buffer[2] >> 4);
-    uint8_t raw_rx = (uint8_t)(adc_buffer[3] >> 4);
+    uint8_t raw_lx = (uint8_t)(raw12[0] >> 4);
+    uint8_t raw_ly = (uint8_t)(raw12[1] >> 4);
+    uint8_t raw_ry = (uint8_t)(raw12[2] >> 4);
+    uint8_t raw_rx = (uint8_t)(raw12[3] >> 4);
 
     data->left_x          = apply_calibration(median3_filter(0, raw_lx), joy_cal_offset[0]);
     data->left_y          = apply_calibration(median3_filter(1, raw_ly), joy_cal_offset[1]);
     data->right_y         = apply_calibration(median3_filter(2, raw_ry), joy_cal_offset[2]);
     data->right_x         = apply_calibration(median3_filter(3, raw_rx), joy_cal_offset[3]);
     data->battery_percent = calculate_battery_percent(adc_buffer[4]);  // PA0
-    data->reserved        = 0;  // PA2 removed from scan
+
+    // Wiring-fault protection: an axis pinned at an ADC rail (broken wiper /
+    // short) is forced to neutral so it cannot command full-speed motion.
+    if (joystick_axis_faulted(0, raw12[0])) data->left_x  = 127;
+    if (joystick_axis_faulted(1, raw12[1])) data->left_y  = 127;
+    if (joystick_axis_faulted(2, raw12[2])) data->right_y = 127;
+    if (joystick_axis_faulted(3, raw12[3])) data->right_x = 127;
 }
 
 /**

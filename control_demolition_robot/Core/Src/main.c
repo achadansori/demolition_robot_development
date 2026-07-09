@@ -45,6 +45,15 @@
 /* The bridge TPDO1 fires every ~50 ms; treat the link as alive while a fresh
  * RPDO1 arrived within this window (snappy connect/disconnect, no flicker). */
 #define COMM_TIMEOUT_MS  200u
+
+/* End-to-end freshness window: the transmitter increments byte 5 of the
+ * packet every loop, so it changes on every 50 ms TPDO. If it stops changing
+ * while RPDOs still arrive, a hung bridge (or hung TX) is replaying stale
+ * data - treat the link as dead.
+ * Must stay ABOVE the bridge's radio window (250 ms) + one TPDO period
+ * (50 ms) + margin, or normal short radio gaps (TX OLED updates) would trip
+ * it and cause spurious drops. 400 ms it is. */
+#define FRESH_TIMEOUT_MS 400u
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -82,17 +91,70 @@ static void ctrl_decode(const uint8_t d[8], NRF24_ReceivedData_t* o);
 /* USER CODE BEGIN 0 */
 
 /**
-  * @brief  Send debug message via USB CDC
+  * @brief  Force every actuator output to its safe state using ONLY direct
+  *         register writes (no HAL, no globals) so it can be called from any
+  *         fault handler even with a corrupted heap/stack or disabled IRQs.
+  *
+  *         - all PWM compare values -> 0 (constant-low within one PWM period)
+  *         - TIM1/TIM8 main output enable (MOE) cleared -> outputs cut now
+  *         - PB1 (Tool 1 / breaker), PB8 (emergency relay), PE6 (motor
+  *           starter) -> LOW
+  */
+void Failsafe_EmergencyOutputs(void)
+{
+    TIM1->CCR1 = 0; TIM1->CCR2 = 0; TIM1->CCR3 = 0; TIM1->CCR4 = 0;
+    TIM2->CCR1 = 0; TIM2->CCR2 = 0; TIM2->CCR3 = 0; TIM2->CCR4 = 0;
+    TIM3->CCR1 = 0; TIM3->CCR2 = 0; TIM3->CCR3 = 0; TIM3->CCR4 = 0;
+    TIM4->CCR1 = 0; TIM4->CCR2 = 0; TIM4->CCR3 = 0; TIM4->CCR4 = 0;
+    TIM8->CCR1 = 0; TIM8->CCR2 = 0; TIM8->CCR3 = 0; TIM8->CCR4 = 0;
+
+    /* Advanced timers: cut the outputs immediately, not at the next update */
+    TIM1->BDTR &= ~TIM_BDTR_MOE;
+    TIM8->BDTR &= ~TIM_BDTR_MOE;
+
+    GPIOB->BSRR = (1u << (1 + 16));   /* PB1 Tool 1 (breaker) LOW  */
+    GPIOB->BSRR = (1u << (8 + 16));   /* PB8 emergency relay  LOW  */
+    GPIOE->BSRR = (1u << (6 + 16));   /* PE6 motor starter    LOW  */
+}
+
+/* Independent watchdog (direct register access, no HAL module needed).
+ * LSI/32 = ~1 kHz -> reload ~= timeout in ms. If the control loop ever hangs,
+ * the MCU resets and re-boots into Control_Init() (all PWM at 0%) instead of
+ * leaving the hydraulics driven by the last duty cycle forever. */
+#define IWDG_TIMEOUT_MS 800u
+
+static void Failsafe_IWDG_Start(void)
+{
+    /* Freeze the IWDG while the core is halted by a debugger, otherwise
+     * every breakpoint would end in a watchdog reset. No effect in the field. */
+      DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+
+      IWDG->KR  = 0x5555u;                      /* unlock PR/RLR access */
+    IWDG->PR  = 3u;                           /* LSI / 32 -> ~1 kHz   */
+    IWDG->RLR = (IWDG_TIMEOUT_MS > 4095u) ? 4095u : IWDG_TIMEOUT_MS;
+    IWDG->KR  = 0xAAAAu;                      /* load reload value    */
+    IWDG->KR  = 0xCCCCu;                      /* start watchdog       */
+}
+
+static inline void Failsafe_IWDG_Refresh(void)
+{
+    IWDG->KR = 0xAAAAu;
+}
+
+/**
+  * @brief  Send debug message via USB CDC (best-effort, NON-BLOCKING).
+  *         No HAL_Delay: a delay here would add latency to the control loop.
+  *         If the CDC endpoint is busy the message is simply dropped.
   */
 void Debug_Print(const char* msg)
 {
     if (msg == NULL) return;
     CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
-    HAL_Delay(5);
 }
 
 /**
-  * @brief  Send formatted debug message via USB CDC (printf-style)
+  * @brief  Send formatted debug message via USB CDC (printf-style,
+  *         best-effort, NON-BLOCKING - see Debug_Print).
   */
 void Debug_Printf(const char* format, ...)
 {
@@ -101,7 +163,6 @@ void Debug_Printf(const char* format, ...)
     vsnprintf(debug_buffer, sizeof(debug_buffer), format, args);
     va_end(args);
     CDC_Transmit_FS((uint8_t*)debug_buffer, strlen(debug_buffer));
-    HAL_Delay(1);
 }
 
 /* Called by the stack whenever RPDO1 writes the control data (OD 0x2000). */
@@ -220,7 +281,13 @@ int main(void)
   HAL_Delay(2000);
   Debug_Printf("\r\n=== Demolition Robot Control (CANopen Node-ID %u) ===\r\n",
                (unsigned)CTRL_LINK_CONTROL_NODE_ID);
+  HAL_Delay(10);  /* let the first CDC frame drain (prints are non-blocking now) */
   Debug_Printf("CAN 500 kbps on PD0/PD1, waiting for RPDO1...\r\n\r\n");
+
+  /* Watchdog: started after all blocking init (USB wait) is done. From here
+   * on the loop must keep refreshing it or the MCU resets - which re-enters
+   * Control_Init() with every PWM output at 0%. */
+  Failsafe_IWDG_Start();
 
   /* USER CODE END 2 */
 
@@ -233,6 +300,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /* Feed the watchdog - must stay the first thing the loop does */
+    Failsafe_IWDG_Refresh();
+
     canopen_app_process();
 
     /* ---- Read the latest RPDO1 process data (OD 0x2000) ---- */
@@ -249,36 +319,94 @@ int main(void)
     }
 
     uint32_t now = HAL_GetTick();
+
+    /* Link validity = three independent checks, ALL must pass:
+     * 1. link_alive : an RPDO1 arrived within COMM_TIMEOUT_MS (CAN hop OK)
+     * 2. data_fresh : the TX freshness counter (byte 5) keeps changing
+     *                 (catches a hung bridge/TX whose ISR replays old data)
+     * 3. sig_ok     : packet signature bits present (rejects a foreign or
+     *                 incompatible transmitter and the bridge's radio-loss
+     *                 zero packet) */
     uint8_t link_alive = ((now - ctrl_last_rx_tick) < COMM_TIMEOUT_MS);
 
-    if (link_alive)
+    static uint8_t  last_counter = 0;
+    static uint32_t counter_change_tick = 0;
+    if (d[CTRL_BYTE_COUNTER] != last_counter)
+    {
+      last_counter = d[CTRL_BYTE_COUNTER];
+      counter_change_tick = now;
+    }
+    uint8_t data_fresh = ((now - counter_change_tick) < FRESH_TIMEOUT_MS);
+
+    uint8_t sig_ok  = ctrl_signature_ok_raw(d);
+    uint8_t link_ok = (link_alive && data_fresh && sig_ok);
+
+    /* Re-arm interlock: after ANY link interruption the robot must not jump
+     * back into motion just because the radio came back while the operator
+     * still holds a deflected stick with the motor latched ON. Motion stays
+     * blocked until a clean packet with motor_active=0 arrives (operator
+     * cycles S0 on the remote, which forces it to SLEEP). Starts latched at
+     * boot; the transmitter's boot-in-SLEEP state clears it immediately. */
+    static uint8_t rearm_required = 1;
+    if (!link_ok)
+    {
+      rearm_required = 1;
+    }
+
+    if (link_ok)
     {
       ctrl_decode(d, &nrf24_data);
       rx_packet_seen = 1;
+
+      if (rearm_required)
+      {
+        if (nrf24_data.motor_active == 0)
+        {
+          rearm_required = 0;  /* TX is in SLEEP / motor off -> safe to resume */
+        }
+        else
+        {
+          /* Block motion but do NOT drop the S0 emergency relay: treat as
+           * motor-off + neutral sticks (sleep branch in Control_Update). */
+          nrf24_data.motor_active = 0;
+          nrf24_data.joy_left_x  = 127;
+          nrf24_data.joy_left_y  = 127;
+          nrf24_data.joy_right_x = 127;
+          nrf24_data.joy_right_y = 127;
+        }
+      }
     }
     else
     {
-      /* Link lost -> all-zero packet: s0=0 forces the emergency-stop branch in
-       * Control_Update (PWM all 0, motor relay + tool off). Fail safe. */
+      /* Link lost/stale/invalid -> all-zero packet: s0=0 forces the
+       * emergency-stop branch in Control_Update (PWM all 0, motor relay +
+       * tool off). Fail safe. */
       memset(&nrf24_data, 0, sizeof(nrf24_data));
     }
 
     Control_Update(&nrf24_data);
 
-    /* Diagnostic output every 1 second */
+    /* Diagnostic output every 1 second (single non-blocking CDC frame) */
     if ((now - last_diag_time) >= 1000u)
     {
       last_diag_time = now;
-      Debug_Printf("LINK=%s | RAW:[%02X %02X %02X %02X %02X %02X %02X %02X]\r\n",
-          link_alive ? "UP " : "DOWN",
-          d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
       if (rx_packet_seen)
       {
-        Debug_Printf("  LX=%3d LY=%3d RX=%3d RY=%3d | S0=%d S5=%d%d | M=%d\r\n",
+        Debug_Printf("LINK=%s%s | RAW:[%02X %02X %02X %02X %02X %02X %02X %02X] | LX=%3d LY=%3d RX=%3d RY=%3d | S0=%d S5=%d%d | M=%d\r\n",
+            link_ok ? "UP  " : "DOWN",
+            (!link_ok && link_alive) ? (sig_ok ? "(stale)" : "(sig)") :
+                (rearm_required ? "(rearm)" : ""),
+            d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
             nrf24_data.joy_left_x, nrf24_data.joy_left_y,
             nrf24_data.joy_right_x, nrf24_data.joy_right_y,
             nrf24_data.s0, nrf24_data.s5_1, nrf24_data.s5_2,
             nrf24_data.motor_active);
+      }
+      else
+      {
+        Debug_Printf("LINK=%s | RAW:[%02X %02X %02X %02X %02X %02X %02X %02X]\r\n",
+            link_ok ? "UP  " : "DOWN",
+            d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
       }
     }
     /* USER CODE END 3 */
@@ -302,6 +430,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
+  /* Try HSE first (8 MHz) -> PLL -> 168 MHz. HSE can fail to start on a slow
+   * VDD ramp; retry a few times, cycling it off/on between attempts, instead
+   * of hanging in Error_Handler with the robot dead. */
+  HAL_StatusTypeDef status = HAL_ERROR;
+  const uint8_t HSE_MAX_ATTEMPTS = 5;
+
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -310,9 +444,38 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 7;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  for (uint8_t attempt = 0; attempt < HSE_MAX_ATTEMPTS; attempt++)
   {
-    Error_Handler();
+    status = HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    if (status == HAL_OK)
+    {
+      break;
+    }
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+    HAL_Delay(50);  /* SysTick still runs on HSI here, so HAL_Delay works */
+  }
+
+  /* Fallback to HSI (16 MHz) if HSE never started. PLL re-tuned so SYSCLK
+   * stays 168 MHz (VCO_in = HSI/16 = 1 MHz, same as HSE/8): CAN bit timing,
+   * timer clocks and PWM frequency are all unchanged. */
+  if (status != HAL_OK)
+  {
+    clock_source_is_hsi = 1;
+
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLM = 16;
+    RCC_OscInitStruct.PLL.PLLN = 336;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+    RCC_OscInitStruct.PLL.PLLQ = 7;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -402,7 +565,11 @@ static void MX_TIM14_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+  /* Force every actuator to its safe state BEFORE parking: the PWM timers
+   * run in hardware and would otherwise keep driving the hydraulics with the
+   * last duty cycle forever. If the IWDG is already running, the MCU resets
+   * out of this loop into a clean boot (Control_Init -> all PWM 0%). */
+  Failsafe_EmergencyOutputs();
   __disable_irq();
   while (1)
   {

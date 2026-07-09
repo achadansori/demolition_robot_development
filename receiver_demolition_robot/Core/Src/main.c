@@ -83,6 +83,48 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
   }
 }
 
+/* Radio-loss failsafe window: after this long without a valid NRF24 packet
+ * the bridge publishes an all-zero packet (S0=0 -> emergency).
+ * 250 ms, NOT lower: the transmitter's main loop can legitimately pause up
+ * to ~90 ms during a blocking OLED I2C frame update (worse while hold-
+ * progress bars redraw every loop), so a tighter window (150 ms was tried)
+ * causes spurious link drops. 250 ms is still 2x faster than the original
+ * 500 ms and within the 100-250 ms industry practice for RC failsafe. */
+#define RF_LOSS_TIMEOUT_MS       250u
+
+/* Periodic NRF24 health check: the nRF24L01+ is known to lock up or lose its
+ * register config on power glitches. Once per second verify CONFIG and RF
+ * channel; on mismatch re-run the full configuration. One SPI register read
+ * per second - no effect on the receive path. */
+#define NRF_CHECK_INTERVAL_MS    1000u
+#define NRF_EXPECTED_CONFIG      (NRF24_CONFIG_PWR_UP | NRF24_CONFIG_PRIM_RX | \
+                                  NRF24_CONFIG_EN_CRC | NRF24_CONFIG_CRCO)
+#define NRF_EXPECTED_CHANNEL     76u
+
+/* Independent watchdog (direct register access, no HAL module needed).
+ * LSI/32 = ~1 kHz -> reload ~= timeout in ms. If this loop ever hangs, the
+ * MCU resets instead of letting the 1 ms ISR keep re-sending stale TPDO data
+ * forever (the control board's freshness counter also covers that case). */
+#define IWDG_TIMEOUT_MS          800u
+
+static void Failsafe_IWDG_Start(void)
+{
+  /* Freeze the IWDG while the core is halted by a debugger, otherwise
+   * every breakpoint would end in a watchdog reset. No effect in the field. */
+  DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+
+  IWDG->KR  = 0x5555u;                       /* unlock PR/RLR access */
+  IWDG->PR  = 3u;                            /* LSI / 32 -> ~1 kHz   */
+  IWDG->RLR = (IWDG_TIMEOUT_MS > 4095u) ? 4095u : IWDG_TIMEOUT_MS;
+  IWDG->KR  = 0xAAAAu;                       /* load reload value    */
+  IWDG->KR  = 0xCCCCu;                       /* start watchdog       */
+}
+
+static inline void Failsafe_IWDG_Refresh(void)
+{
+  IWDG->KR = 0xAAAAu;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -131,8 +173,23 @@ int main(void)
   MX_NRF24_GPIO_Init();
 
   NRF24_Init(&hspi1, NRF_CE_GPIO_Port, NRF_CE_Pin, NRF_CSN_GPIO_Port, NRF_CSN_Pin);
-  NRF24_Configure();
+
+  /* Retry the radio configuration a few times instead of silently ignoring a
+   * failure (e.g. slow power-up of the NRF24 module). If it still fails the
+   * bridge stays radio-silent, which the downstream timeouts turn into an
+   * emergency stop - and the periodic health check below keeps retrying. */
+  for (uint8_t attempt = 0; attempt < 5; attempt++)
+  {
+    if (NRF24_Configure())
+    {
+      break;
+    }
+    HAL_Delay(50);
+  }
   NRF24_StartListening();
+
+  /* Watchdog: started after all blocking init is done. */
+  Failsafe_IWDG_Start();
 
   /* USER CODE END 2 */
 
@@ -142,15 +199,18 @@ int main(void)
   {
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
+    /* Feed the watchdog - must stay the first thing the loop does */
+    Failsafe_IWDG_Refresh();
+
     /* ---- Forward the NRF24 radio packet onto the CAN bus (OD 0x2000) ----
      * The 8-byte radio payload has the exact byte/bit layout of ctrl_link.h,
      * so it is copied straight into the TPDO1-mapped process data and the
      * control board (RPDO1 consumer) decodes it just like an NRF24 packet.
      * TPDO1 auto-transmits every 50 ms via its event timer.
      *
-     * If the radio link drops for >500 ms we publish an all-zero packet
-     * (S0=0 -> emergency, motor_active=0) so the robot fails safe instead of
-     * latching the last command. */
+     * If the radio link drops for >RF_LOSS_TIMEOUT_MS we publish an all-zero
+     * packet (S0=0 -> emergency, motor_active=0) so the robot fails safe
+     * instead of latching the last command. */
     static uint32_t last_rf_ms = 0;
     uint8_t d[8];
     uint8_t have_packet = 0;
@@ -160,10 +220,37 @@ int main(void)
       have_packet = 1;
       last_rf_ms = HAL_GetTick();
     }
-    else if ((HAL_GetTick() - last_rf_ms) >= 500u)
+    else if ((HAL_GetTick() - last_rf_ms) >= RF_LOSS_TIMEOUT_MS)
     {
       for (int i = 0; i < 8; i++) { d[i] = 0; }   /* radio lost -> safe packet */
       have_packet = 1;
+    }
+
+    /* ---- NRF24 health check / auto-recovery (1x per second) ----
+     * Verify the radio still holds its configuration; a lockup or register
+     * corruption (power glitch) is repaired by a full re-configure. Runs on
+     * a timer so it costs one SPI read per second on the healthy path. */
+    {
+      static uint32_t last_nrf_check_ms = 0;
+      uint32_t tnow = HAL_GetTick();
+      if ((tnow - last_nrf_check_ms) >= NRF_CHECK_INTERVAL_MS)
+      {
+        last_nrf_check_ms = tnow;
+        uint8_t cfg = NRF24_ReadReg(NRF24_REG_CONFIG);
+        uint8_t ch  = NRF24_ReadReg(NRF24_REG_RF_CH);
+        /* Masked compare so quirky clone chips with extra readback bits do
+         * not trigger a pointless re-init every second. Still catches
+         * power-down, wrong mode, CRC off, and SPI-dead reads (0x00/0xFF:
+         * 0xFF fails the channel test, 0x00 fails the config test). */
+        if ((cfg & NRF_EXPECTED_CONFIG) != NRF_EXPECTED_CONFIG
+            || ch != NRF_EXPECTED_CHANNEL)
+        {
+          /* Radio lost its config (or SPI dead: reads 0x00/0xFF). Re-init.
+           * Blocking ~20 ms, but only ever on an already-broken radio. */
+          NRF24_Configure();
+          NRF24_StartListening();
+        }
+      }
     }
 
     if (have_packet && canopenNodeSTM32 != NULL && canopenNodeSTM32->canOpenStack != NULL)

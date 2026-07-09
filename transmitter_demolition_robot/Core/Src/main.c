@@ -74,6 +74,31 @@ void Debug_Printf(const char* format, ...);
 /* USER CODE BEGIN 0 */
 volatile uint8_t s0_emergency_flag = 0;  // Set by EXTI0 ISR when S0 = 0
 volatile uint8_t clock_source_is_hsi = 0;  // 1 if HSE failed and HSI fallback is active
+
+/* Independent watchdog (IWDG), driven by direct register access so no HAL
+ * module needs enabling. LSI/32 = ~1 kHz -> reload value ~= timeout in ms
+ * (LSI tolerance 17-47 kHz, so real timeout is 0.7x-1.9x nominal).
+ * Once started the IWDG can never be stopped: a hung main loop resets the
+ * MCU instead of leaving the transmitter silent-but-frozen. */
+#define IWDG_TIMEOUT_MS 2000u  /* generous: worst loop iteration is an OLED full-frame I2C update */
+
+static void Failsafe_IWDG_Start(void)
+{
+  /* Freeze the IWDG while the core is halted by a debugger, otherwise
+   * every breakpoint would end in a watchdog reset. No effect in the field. */
+  DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+
+  IWDG->KR  = 0x5555u;                       /* unlock PR/RLR access */
+  IWDG->PR  = 3u;                            /* LSI / 32 -> ~1 kHz   */
+  IWDG->RLR = (IWDG_TIMEOUT_MS > 4095u) ? 4095u : IWDG_TIMEOUT_MS;
+  IWDG->KR  = 0xAAAAu;                       /* load reload value    */
+  IWDG->KR  = 0xCCCCu;                       /* start watchdog       */
+}
+
+static inline void Failsafe_IWDG_Refresh(void)
+{
+  IWDG->KR = 0xAAAAu;
+}
 /* USER CODE END 0 */
 
 /**
@@ -245,6 +270,20 @@ int main(void)
   Debug_Printf("Entering main loop...\r\n");
   HAL_Delay(10);
 
+  // NRF24 health check / auto-recovery (1x per second, like the receiver):
+  // verify the CONFIG register still holds a valid powered-up TX setup and
+  // re-run the full configuration if not. Because the CHECK itself validates
+  // the desired end state every second, a failed re-configure can never
+  // latch the radio in power-down - it simply gets retried a second later.
+  // One SPI register read per second on the healthy path: no added TX delay.
+  uint32_t last_nrf_check_ms = 0;
+  #define NRF_CHECK_INTERVAL_MS 1000u
+
+  // Watchdog: started only now, after all blocking init (USB wait, S0 wait,
+  // NRF24 config, OLED splash) is done. From here on the loop must keep
+  // refreshing it or the MCU resets to a clean state.
+  Failsafe_IWDG_Start();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -254,6 +293,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // Feed the watchdog - must stay the first thing the loop does
+    Failsafe_IWDG_Refresh();
+
     // Update semua data sensor
     Var_Update();
 
@@ -503,6 +545,27 @@ int main(void)
     else
     {
         tx_not_ready++;
+    }
+
+    // NRF24 health check / auto-recovery (1x per second). Self-correcting:
+    // verifies the actual radio state (CONFIG register), so a re-configure
+    // that fails mid-way just gets retried on the next check instead of
+    // leaving the radio silently powered down.
+    {
+        uint32_t tnow = HAL_GetTick();
+        if ((tnow - last_nrf_check_ms) >= NRF_CHECK_INTERVAL_MS)
+        {
+            last_nrf_check_ms = tnow;
+            if (!NRF24_VerifyConfig())
+            {
+                Debug_Printf("NRF24: bad config, re-initializing...\r\n");
+                if (NRF24_Configure())
+                {
+                    Debug_Printf("NRF24: recovered\r\n");
+                }
+                // If it failed, the next 1 s check retries automatically.
+            }
+        }
     }
 
     // Update OLED display (every 10 cycles = ~500ms)

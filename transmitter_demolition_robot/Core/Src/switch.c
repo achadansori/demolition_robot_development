@@ -18,7 +18,8 @@
   * - JOY_RIGHT_BTN1: PB1
   * - JOY_RIGHT_BTN2: PC5
   * - S0:             PB0
-  * - S1_1:           PE3
+  * - S1_1:           PE4  (moved from PE3 - PE3 is the Discovery onboard
+  *                         accelerometer CS and must stay HIGH; see main.h)
   * - S1_2:           PE5
   * - S2_1:           PE1
   * - S2_2:           PB8

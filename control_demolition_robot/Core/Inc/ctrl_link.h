@@ -40,10 +40,14 @@ enum {
     CTRL_BYTE_RIGHT_X = 2,   /* joystick right X                     */
     CTRL_BYTE_RIGHT_Y = 3,   /* joystick right Y                     */
     CTRL_BYTE_R8      = 4,   /* TX battery % (NOT a pot - do not map to r8) */
-    CTRL_BYTE_R1      = 5,   /* reserved                                     */
+    CTRL_BYTE_COUNTER = 5,   /* rolling freshness counter, +1 per TX loop.
+                                The control board declares the link stale if
+                                this stops changing (catches a hung bridge
+                                whose ISR keeps re-sending old TPDO data). */
     CTRL_BYTE_SW_LO   = 6,   /* switch bits 0..7                     */
     CTRL_BYTE_SW_HI   = 7    /* switch bits 8..15                    */
 };
+#define CTRL_BYTE_R1 CTRL_BYTE_COUNTER  /* legacy name (was reserved/R1 pot) */
 
 /* Switch bit positions within the 16-bit (SW_HI<<8 | SW_LO) field ----------*/
 enum {
@@ -61,7 +65,19 @@ enum {
     CTRL_SW_S5_1           = 11,  /* mode select */
     CTRL_SW_S5_2           = 12,  /* mode select */
     CTRL_SW_MOTOR_ACTIVE   = 13
+    /* bits 14-15: packet signature, must equal CTRL_PACKET_SIGNATURE */
 };
+
+/* Packet signature carried in switch bits 14-15. A packet without it is
+ * rejected by the control board (foreign or incompatible transmitter, or the
+ * bridge's all-zero radio-loss packet - both fail safe). */
+#define CTRL_PACKET_SIGNATURE      2u  /* 0b10 */
+#define CTRL_SW_SIGNATURE_SHIFT    14u
+#define CTRL_SW_SIGNATURE_MASK     0x3u
+
+static inline uint8_t ctrl_signature_ok_raw(const uint8_t d[8]) {
+    return (uint8_t)(((d[7] >> 6) & CTRL_SW_SIGNATURE_MASK) == CTRL_PACKET_SIGNATURE);
+}
 
 #define CTRL_JOY_CENTER 127u
 

@@ -127,6 +127,56 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     bool mode_lower = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 1);
 
     // ========================================================================
+    // MODE-SWITCH NEUTRAL INTERLOCK
+    // ========================================================================
+    // Flipping S5 instantly re-maps the joysticks to DIFFERENT actuators.
+    // If the operator switches mode with a stick still deflected, an
+    // unexpected actuator would suddenly move at that deflection. After any
+    // mode change, hold every proportional output at 0 until all four axes
+    // return to neutral. The engine (PE6) keeps running - only motion is
+    // gated - so no function is lost, the operator just releases the sticks.
+    {
+        static uint8_t last_mode_bits = 0xFF;      // 0xFF = not initialized
+        static uint8_t mode_switch_block = 0;
+
+        uint8_t mode_bits = (uint8_t)((lora_data->s5_1 << 1) | lora_data->s5_2);
+        if (last_mode_bits == 0xFF)
+        {
+            last_mode_bits = mode_bits;            // first packet: no block
+        }
+        else if (mode_bits != last_mode_bits)
+        {
+            last_mode_bits = mode_bits;
+            mode_switch_block = 1;
+        }
+
+        if (mode_switch_block)
+        {
+            #define MODE_SWITCH_NEUTRAL_TOL 10     // release window: 127 +/- 10
+            bool sticks_neutral =
+                (lora_data->joy_left_x  >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_x  <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_y  >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_y  <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_x >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_x <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_y >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_y <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL);
+
+            if (sticks_neutral)
+            {
+                mode_switch_block = 0;             // sticks released: resume
+            }
+            else
+            {
+                PWM_StopAll();                     // also drops Tool 1 GPIO
+                GPIOE->BSRR = (1 << 6);            // keep motor starter ON
+                return;
+            }
+        }
+    }
+
+    // ========================================================================
     // MODE UPPER - EXCAVATOR CONTROLS
     // ========================================================================
     if (mode_upper)

@@ -70,7 +70,10 @@ static uint16_t CSN_Pin = 0;
 static bool nrf24_ready = false;
 
 // RF Configuration - MUST match receiver
-static const uint8_t NRF24_ADDR[5] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};  // 5-byte address
+/* Unique pair address - NOT the chip default (0xE7 x5) so any other NRF24
+ * running demo/default firmware nearby can never be heard by this robot.
+ * MUST match rx_addr in receiver_demolition_robot/Core/Src/nrf24.c. */
+static const uint8_t NRF24_ADDR[5] = {0xD3, 0x7A, 0x4C, 0xA5, 0x62};  // 5-byte address
 static const uint8_t NRF24_CHANNEL = 76;  // Channel 76 = 2476 MHz (avoid WiFi)
 
 // Link quality tracking - rolling window of recent TX results.
@@ -441,6 +444,28 @@ bool NRF24_IsConnected(void)
 bool NRF24_IsReady(void)
 {
     return nrf24_ready && NRF24_IsConnected();
+}
+
+/**
+  * @brief  Verify the CONFIG register still holds a valid TX-mode setup:
+  *         powered up, PRIM_RX=0, CRC enabled. Catches a radio left in
+  *         power-down (e.g. an interrupted re-configure) or register
+  *         corruption - states NRF24_IsConnected() cannot see because it
+  *         only reads back the address. One SPI register read, no delay.
+  * @retval true if CONFIG is valid
+  */
+bool NRF24_VerifyConfig(void)
+{
+    if (!nrf24_ready) return false;
+
+    uint8_t cfg = NRF24_ReadRegister(NRF24_REG_CONFIG);
+
+    /* Masked compare (PWR_UP + PRIM_RX + CRC bits) so quirky clone chips
+     * with extra readback bits do not cause false renegatives. Also rejects
+     * SPI-dead reads of 0x00 / 0xFF (0xFF fails the PRIM_RX==0 test). */
+    return ((cfg & (NRF24_CONFIG_PWR_UP | NRF24_CONFIG_EN_CRC |
+                    NRF24_CONFIG_CRC0  | 0x01u))
+            == (NRF24_CONFIG_PWR_UP | NRF24_CONFIG_EN_CRC | NRF24_CONFIG_CRC0));
 }
 
 /**
