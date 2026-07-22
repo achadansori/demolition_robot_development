@@ -104,6 +104,25 @@ void Debug_Printf(const char* format, ...)
     HAL_Delay(1);
 }
 
+/**
+  * @brief  Stream the raw 8-byte control packet to the PC/ROS over USB CDC.
+  *         Line format (ASCII, parsed by the ROS stm32_bridge node):
+  *            $C,LX,LY,RX,RY,BAT,R1,SW_LO,SW_HI\n
+  *         Static buffer: CDC_Transmit_FS keeps the pointer until the transfer
+  *         finishes, so it must outlive the call (do NOT use a stack buffer).
+  *         Non-blocking: if the endpoint is busy the line is simply dropped.
+  */
+static void Ros_Stream_Packet(const uint8_t d[8])
+{
+    static char ros_buffer[48];
+    int n = snprintf(ros_buffer, sizeof(ros_buffer),
+                     "$C,%u,%u,%u,%u,%u,%u,%u,%u\n",
+                     d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+    if (n > 0) {
+        CDC_Transmit_FS((uint8_t*)ros_buffer, (uint16_t)n);
+    }
+}
+
 /* Called by the stack whenever RPDO1 writes the control data (OD 0x2000). */
 static ODR_t ctrl_OD2000_write(OD_stream_t* stream, const void* buf,
                                OD_size_t count, OD_size_t* countWritten)
@@ -227,6 +246,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint32_t last_diag_time = 0;
+  uint32_t last_ros_time = 0;
   uint32_t rx_packet_seen = 0;
   while (1)
   {
@@ -264,6 +284,15 @@ int main(void)
     }
 
     Control_Update(&nrf24_data);
+
+    /* Stream control packet to ROS sim over USB CDC @ ~50 Hz.
+     * Sends the SAME bytes the on-board control uses, so the simulation
+     * mirrors the physical robot. Link-lost -> d[] is all zero (fail-safe). */
+    if ((now - last_ros_time) >= 20u)
+    {
+      last_ros_time = now;
+      Ros_Stream_Packet(d);
+    }
 
     /* Diagnostic output every 1 second */
     if ((now - last_diag_time) >= 1000u)
