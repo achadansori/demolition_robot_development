@@ -32,26 +32,26 @@ extern "C" {
 
 /* PWM Channel Definitions ---------------------------------------------------*/
 typedef enum {
-    PWM_1_CYLINDER_1_OUT = 0,      // TIM8_CH1 (PC6) - Cylinder 1 OUT (joy_right_btn2 + joystick)
-    PWM_2_CYLINDER_1_IN,           // TIM8_CH2 (PC7) - Cylinder 1 IN (joy_right_btn2 + joystick)
-    PWM_3_CYLINDER_2_OUT,          // TIM8_CH4 (PC9)
-    PWM_4_CYLINDER_2_IN,           // TIM3_CH2 (PB5)
-    PWM_5_CYLINDER_3_OUT,          // TIM2_CH2 (PA1)
-    PWM_6_CYLINDER_3_IN,           // TIM3_CH3 (PB0)
-    PWM_7_CYLINDER_4_OUT,          // TIM2_CH3 (PA2)
-    PWM_8_CYLINDER_4_IN,           // TIM2_CH1 (PA0)
-    PWM_9_TOOL_1,                  // TIM3_CH4 (PB1)
-    PWM_10_TOOL_2,                 // TIM8_CH3 (PC8)
-    PWM_11_SLEW_CW,                // TIM4_CH4 (PD15)
-    PWM_12_SLEW_CCW,               // TIM4_CH3 (PD14)
-    PWM_13_OUTRIGGER_LEFT_UP,      // TIM4_CH1 (PD12)
-    PWM_14_OUTRIGGER_LEFT_DOWN,    // TIM3_CH1 (PB4)
-    PWM_15_OUTRIGGER_RIGHT_UP,     // TIM2_CH4 (PA3)
-    PWM_16_OUTRIGGER_RIGHT_DOWN,   // TIM1_CH1 (PE9)
-    PWM_17_TRACK_RIGHT_FORWARD,    // TIM1_CH2 (PE11)
-    PWM_18_TRACK_RIGHT_BACKWARD,   // TIM1_CH3 (PE13)
-    PWM_19_TRACK_LEFT_FORWARD,     // TIM4_CH2 (PD13)
-    PWM_20_TRACK_LEFT_BACKWARD,    // TIM1_CH4 (PE14)
+    PWM_1_CYLINDER_1_OUT = 0,      // TIM2_CH2 (PA1) - Cylinder 1 OUT (joy_right_btn2 + joystick)
+    PWM_2_CYLINDER_1_IN,           // TIM2_CH4 (PA3) - Cylinder 1 IN (joy_right_btn2 + joystick)
+    PWM_3_CYLINDER_2_OUT,          // TIM3_CH4 (PB1)
+    PWM_4_CYLINDER_2_IN,           // TIM1_CH1 (PE9)
+    PWM_5_CYLINDER_3_OUT,          // TIM1_CH2 (PE11)
+    PWM_6_CYLINDER_3_IN,           // TIM1_CH3 (PE13)
+    PWM_7_CYLINDER_4_OUT,          // TIM4_CH2 (PD13)
+    PWM_8_CYLINDER_4_IN,           // TIM4_CH4 (PD15)
+    PWM_9_TOOL_1,                  // GPIO     (PD14) - digital ON/OFF, not PWM
+    PWM_10_TOOL_2,                 // TIM4_CH1 (PD12)
+    PWM_11_SLEW_CW,                // TIM1_CH4 (PE14)
+    PWM_12_SLEW_CCW,               // TIM3_CH3 (PB0)
+    PWM_13_OUTRIGGER_LEFT_UP,      // TIM2_CH3 (PA2)
+    PWM_14_OUTRIGGER_LEFT_DOWN,    // TIM2_CH1 (PA0)
+    PWM_15_OUTRIGGER_RIGHT_UP,     // TIM3_CH1 (PB4)
+    PWM_16_OUTRIGGER_RIGHT_DOWN,   // TIM8_CH3 (PC8)
+    PWM_17_TRACK_RIGHT_FORWARD,    // TIM8_CH1 (PC6)
+    PWM_18_TRACK_RIGHT_BACKWARD,   // TIM8_CH2 (PC7)
+    PWM_19_TRACK_LEFT_FORWARD,     // TIM8_CH4 (PC9)
+    PWM_20_TRACK_LEFT_BACKWARD,    // TIM3_CH2 (PB5)
     PWM_CHANNEL_COUNT = 20
 } PWM_Channel_t;
 
@@ -63,7 +63,7 @@ void PWM_Stop(PWM_Channel_t channel);
 void PWM_StopAll(void);
 
 /* GPIO Control for Tool 1 (digital trigger - ON/OFF) ------------------------*/
-void GPIO_SetTool1(uint8_t state);  // 0 = OFF, 1 = ON (PB1)
+void GPIO_SetTool1(uint8_t state);  // 0 = OFF, 1 = ON (PD14)
 
 #ifdef __cplusplus
 }

@@ -284,11 +284,11 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         // --------------------------------------------------------------------
         // BREAKER - 2 Valve Control
         // --------------------------------------------------------------------
-        // Valve 1 (GPIO PB1): ON/OFF digital trigger by joy_left_btn2
+        // Valve 1 (GPIO PD14): ON/OFF digital trigger by joy_left_btn2
         // Valve 2 (PWM_10): Flow control by R8 potentiometer (proportional)
         //
-        // joy_left_btn2 = 1 → Breaker ON (PB1 = HIGH)
-        // joy_left_btn2 = 0 → Breaker OFF (PB1 = LOW)
+        // joy_left_btn2 = 1 → Breaker ON (PD14 = HIGH)
+        // joy_left_btn2 = 0 → Breaker OFF (PD14 = LOW)
         // R8: 0-255 → PWM_10: min-max% (respects pwm_limits)
 
         if (lora_data->joy_left_btn2 == 1)
