@@ -31,27 +31,39 @@ extern "C" {
 #include <stdbool.h>
 
 /* PWM Channel Definitions ---------------------------------------------------*/
+/*
+ * The pin in each comment is the pin the channel ACTUALLY drives. The single
+ * source of truth is the switch in PWM_SetDutyCycle() (pwm.c) - these comments
+ * only mirror it.
+ *
+ * Every pair below was exchanged when the cylinder/slew/outrigger/track
+ * directions were reversed (6b0edb4, f59d51e): the swap was done by moving the
+ * pin between the two members of each pair, so IN now drives what OUT used to,
+ * and so on. These comments still described the pre-swap wiring and were all
+ * off by one member of their pair; corrected here. If a direction is ever
+ * reversed again, fix pwm.c and then re-check this list against it.
+ */
 typedef enum {
-    PWM_1_CYLINDER_1_OUT = 0,      // TIM2_CH2 (PA1) - Cylinder 1 OUT (joy_right_btn2 + joystick)
-    PWM_2_CYLINDER_1_IN,           // TIM2_CH4 (PA3) - Cylinder 1 IN (joy_right_btn2 + joystick)
-    PWM_3_CYLINDER_2_OUT,          // TIM3_CH4 (PB1)
-    PWM_4_CYLINDER_2_IN,           // TIM1_CH1 (PE9)
-    PWM_5_CYLINDER_3_OUT,          // TIM1_CH2 (PE11)
-    PWM_6_CYLINDER_3_IN,           // TIM1_CH3 (PE13)
-    PWM_7_CYLINDER_4_OUT,          // TIM4_CH2 (PD13)
-    PWM_8_CYLINDER_4_IN,           // TIM4_CH4 (PD15)
+    PWM_1_CYLINDER_1_OUT = 0,      // TIM2_CH4 (PA3)  - Cylinder 1 OUT (joy_right_btn2 + joystick)
+    PWM_2_CYLINDER_1_IN,           // TIM2_CH2 (PA1)  - Cylinder 1 IN  (joy_right_btn2 + joystick)
+    PWM_3_CYLINDER_2_OUT,          // TIM1_CH1 (PE9)
+    PWM_4_CYLINDER_2_IN,           // TIM3_CH4 (PB1)
+    PWM_5_CYLINDER_3_OUT,          // TIM1_CH3 (PE13)
+    PWM_6_CYLINDER_3_IN,           // TIM1_CH2 (PE11)
+    PWM_7_CYLINDER_4_OUT,          // TIM4_CH4 (PD15)
+    PWM_8_CYLINDER_4_IN,           // TIM4_CH2 (PD13)
     PWM_9_TOOL_1,                  // GPIO     (PD12) - digital ON/OFF, not PWM
     PWM_10_TOOL_2,                 // GPIO     (PD14) - digital ON/OFF, not PWM
-    PWM_11_SLEW_CW,                // TIM1_CH4 (PE14)
-    PWM_12_SLEW_CCW,               // TIM3_CH3 (PB0)
-    PWM_13_OUTRIGGER_LEFT_UP,      // TIM2_CH3 (PA2)
-    PWM_14_OUTRIGGER_LEFT_DOWN,    // TIM2_CH1 (PA0)
-    PWM_15_OUTRIGGER_RIGHT_UP,     // TIM3_CH1 (PB4)
-    PWM_16_OUTRIGGER_RIGHT_DOWN,   // TIM8_CH3 (PC8)
-    PWM_17_TRACK_RIGHT_FORWARD,    // TIM8_CH1 (PC6)
-    PWM_18_TRACK_RIGHT_BACKWARD,   // TIM8_CH2 (PC7)
-    PWM_19_TRACK_LEFT_FORWARD,     // TIM8_CH4 (PC9)
-    PWM_20_TRACK_LEFT_BACKWARD,    // TIM3_CH2 (PB5)
+    PWM_11_SLEW_CW,                // TIM3_CH3 (PB0)
+    PWM_12_SLEW_CCW,               // TIM1_CH4 (PE14)
+    PWM_13_OUTRIGGER_LEFT_UP,      // TIM2_CH1 (PA0)
+    PWM_14_OUTRIGGER_LEFT_DOWN,    // TIM2_CH3 (PA2)
+    PWM_15_OUTRIGGER_RIGHT_UP,     // TIM8_CH3 (PC8)
+    PWM_16_OUTRIGGER_RIGHT_DOWN,   // TIM3_CH1 (PB4)
+    PWM_17_TRACK_RIGHT_FORWARD,    // TIM8_CH2 (PC7)
+    PWM_18_TRACK_RIGHT_BACKWARD,   // TIM8_CH1 (PC6)
+    PWM_19_TRACK_LEFT_FORWARD,     // TIM3_CH2 (PB5)
+    PWM_20_TRACK_LEFT_BACKWARD,    // TIM8_CH4 (PC9)
     PWM_CHANNEL_COUNT = 20
 } PWM_Channel_t;
 
