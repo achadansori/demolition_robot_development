@@ -169,6 +169,12 @@ int main(void)
   uint8_t can_mode = 0;
   uint32_t last_can_tx_ms = 0;
 
+  // Waktu terakhir sebuah paket benar-benar terkirim (ACK diterima di mode
+  // radio, mailbox menerima di mode CAN). Dipakai untuk menyelaraskan
+  // tampilan dengan keadaan robot - lihat LINK_LOST_MS di bawah.
+  uint32_t last_tx_ok_ms = HAL_GetTick();
+  #define LINK_LOST_MS 1000u  // > COMM_TIMEOUT_MS (500) milik control board
+
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps transition
   #define S1_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (exit SLEEP)
   #define S1_2_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (calibration)
@@ -471,6 +477,25 @@ int main(void)
     // ========================================================================
     if (!sleep_mode_active)
     {
+        // Link putus cukup lama: robot sudah mematikan motor sendiri lewat
+        // watchdog 500 ms-nya dan menunggu S2_1 ditekan ulang. Tanpa ini
+        // motor_active tetap 1 (self-holding), jadi OLED terus menampilkan
+        // layar mode jalan sementara robotnya sudah berhenti - operator tidak
+        // dapat petunjuk apa pun bahwa dia harus menekan ulang.
+        //
+        // Berbasis WAKTU, bukan hitungan paket: loop ini free-running, jadi
+        // ambang berbasis jumlah paket hanya bernilai puluhan milidetik dan
+        // kedipan RF sekejap sudah cukup untuk mematikan motor.
+        //
+        // Ini murni penyelarasan tampilan. Otoritasnya tetap di control board
+        // (Control_RequireMotorRestart), jadi kalau penilaian di sini sesekali
+        // meleset tidak ada konsekuensi keselamatan.
+        if ((HAL_GetTick() - last_tx_ok_ms) > LINK_LOST_MS)
+        {
+            motor_active = 0;
+            s2_1_hold_counter = 0;
+        }
+
         if (tx_data.switches.s2_1 == 1)
         {
             s2_1_hold_counter++;
@@ -520,6 +545,7 @@ int main(void)
             if (CtrlCAN_Send(Var_GetBinaryData()))
             {
                 tx_ok_count++;
+                last_tx_ok_ms = HAL_GetTick();
                 HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
             }
             else
@@ -544,6 +570,7 @@ int main(void)
             if (NRF24_SendBinary(Var_GetBinaryData(), Var_GetDataSize()))
             {
                 tx_ok_count++;
+                last_tx_ok_ms = HAL_GetTick();
                 // Transmission success - brief green LED blink
                 HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
             }
