@@ -40,8 +40,8 @@ typedef enum {
     PWM_6_CYLINDER_3_IN,           // TIM1_CH3 (PE13)
     PWM_7_CYLINDER_4_OUT,          // TIM4_CH2 (PD13)
     PWM_8_CYLINDER_4_IN,           // TIM4_CH4 (PD15)
-    PWM_9_TOOL_1,                  // GPIO     (PD14) - digital ON/OFF, not PWM
-    PWM_10_TOOL_2,                 // TIM4_CH1 (PD12)
+    PWM_9_TOOL_1,                  // GPIO     (PD12) - digital ON/OFF, not PWM
+    PWM_10_TOOL_2,                 // GPIO     (PD14) - digital ON/OFF, not PWM
     PWM_11_SLEW_CW,                // TIM1_CH4 (PE14)
     PWM_12_SLEW_CCW,               // TIM3_CH3 (PB0)
     PWM_13_OUTRIGGER_LEFT_UP,      // TIM2_CH3 (PA2)
@@ -62,8 +62,9 @@ uint8_t PWM_GetDutyCycle(PWM_Channel_t channel);
 void PWM_Stop(PWM_Channel_t channel);
 void PWM_StopAll(void);
 
-/* GPIO Control for Tool 1 (digital trigger - ON/OFF) ------------------------*/
-void GPIO_SetTool1(uint8_t state);  // 0 = OFF, 1 = ON (PD14)
+/* GPIO Control for Tools (digital trigger - ON/OFF) -------------------------*/
+void GPIO_SetTool1(uint8_t state);  // 0 = OFF, 1 = ON (PD12)
+void GPIO_SetTool2(uint8_t state);  // 0 = OFF, 1 = ON (PD14)
 
 #ifdef __cplusplus
 }

@@ -106,20 +106,20 @@ static void PWM_ConfigureGPIO(void)
     GPIOB->AFR[0] |= (2<<(0*4)) | (2<<(1*4)) | (2<<(4*4)) | (2<<(5*4));  // AF2
     GPIOB->OSPEEDR |= (3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2));
 
-    // Configure TIM4 pins (PD12, PD13, PD15) - AF2 (PD14 excluded - GPIO for Tool 1)
-    GPIOD->MODER &= ~((3<<(12*2)) | (3<<(13*2)) | (3<<(15*2)));
-    GPIOD->MODER |= (2<<(12*2)) | (2<<(13*2)) | (2<<(15*2));
-    GPIOD->AFR[1] &= ~((0xF<<((12-8)*4)) | (0xF<<((13-8)*4)) | (0xF<<((15-8)*4)));
-    GPIOD->AFR[1] |= (2<<((12-8)*4)) | (2<<((13-8)*4)) | (2<<((15-8)*4));  // AF2
-    GPIOD->OSPEEDR |= (3<<(12*2)) | (3<<(13*2)) | (3<<(15*2));
+    // Configure TIM4 pins (PD13, PD15) - AF2 (PD12/PD14 excluded - GPIO for Tools)
+    GPIOD->MODER &= ~((3<<(13*2)) | (3<<(15*2)));
+    GPIOD->MODER |= (2<<(13*2)) | (2<<(15*2));
+    GPIOD->AFR[1] &= ~((0xF<<((13-8)*4)) | (0xF<<((15-8)*4)));
+    GPIOD->AFR[1] |= (2<<((13-8)*4)) | (2<<((15-8)*4));  // AF2
+    GPIOD->OSPEEDR |= (3<<(13*2)) | (3<<(15*2));
 
-    // Configure PD14 as GPIO output for Tool 1 (digital trigger, not PWM)
-    GPIOD->MODER &= ~(3<<(14*2));
-    GPIOD->MODER |= (1<<(14*2));    // GPIO output mode
-    GPIOD->OTYPER &= ~(1<<14);      // Push-pull output
-    GPIOD->PUPDR &= ~(3<<(14*2));   // No pull-up, no pull-down
-    GPIOD->OSPEEDR |= (3<<(14*2));  // High speed
-    GPIOD->BSRR = (1<<(14+16));     // Set LOW initially (BR14)
+    // Configure PD12 (Tool 1) and PD14 (Tool 2) as GPIO outputs (digital ON/OFF)
+    GPIOD->MODER &= ~((3<<(12*2)) | (3<<(14*2)));
+    GPIOD->MODER |= (1<<(12*2)) | (1<<(14*2));   // GPIO output mode
+    GPIOD->OTYPER &= ~((1<<12) | (1<<14));       // Push-pull output
+    GPIOD->PUPDR &= ~((3<<(12*2)) | (3<<(14*2)));// No pull-up, no pull-down
+    GPIOD->OSPEEDR |= (3<<(12*2)) | (3<<(14*2)); // High speed
+    GPIOD->BSRR = (1<<(12+16)) | (1<<(14+16));   // Set LOW initially
 
     // Configure TIM8 pins (PC6, PC7, PC8, PC9) - AF3
     GPIOC->MODER &= ~((3<<(6*2)) | (3<<(7*2)) | (3<<(8*2)) | (3<<(9*2)));
@@ -359,33 +359,32 @@ void PWM_SetDutyCycle(PWM_Channel_t channel, uint8_t duty_percent)
     switch(channel)
     {
         // TIM8 channels
-        case PWM_17_TRACK_RIGHT_FORWARD:  TIM8->CCR1 = ccr_value; break;  // PC6
-        case PWM_18_TRACK_RIGHT_BACKWARD: TIM8->CCR2 = ccr_value; break;  // PC7
-        case PWM_16_OUTRIGGER_RIGHT_DOWN: TIM8->CCR3 = ccr_value; break;  // PC8
-        case PWM_19_TRACK_LEFT_FORWARD:   TIM8->CCR4 = ccr_value; break;  // PC9
+        case PWM_18_TRACK_RIGHT_BACKWARD: TIM8->CCR1 = ccr_value; break;  // PC6  (was TRACK R FWD)
+        case PWM_17_TRACK_RIGHT_FORWARD:  TIM8->CCR2 = ccr_value; break;  // PC7  (was TRACK R BWD)
+        case PWM_15_OUTRIGGER_RIGHT_UP:   TIM8->CCR3 = ccr_value; break;  // PC8  (was OUTRIG R DOWN)
+        case PWM_20_TRACK_LEFT_BACKWARD:  TIM8->CCR4 = ccr_value; break;  // PC9  (was TRACK L FWD)
 
         // TIM3 channels
-        case PWM_15_OUTRIGGER_RIGHT_UP: TIM3->CCR1 = ccr_value; break;  // PB4
-        case PWM_20_TRACK_LEFT_BACKWARD: TIM3->CCR2 = ccr_value; break;  // PB5
-        case PWM_12_SLEW_CCW:       TIM3->CCR3 = ccr_value; break;  // PB0
-        case PWM_3_CYLINDER_2_OUT:  TIM3->CCR4 = ccr_value; break;  // PB1
+        case PWM_16_OUTRIGGER_RIGHT_DOWN: TIM3->CCR1 = ccr_value; break;  // PB4  (was OUTRIG R UP)
+        case PWM_19_TRACK_LEFT_FORWARD:  TIM3->CCR2 = ccr_value; break;  // PB5  (was TRACK L BWD)
+        case PWM_11_SLEW_CW:        TIM3->CCR3 = ccr_value; break;  // PB0  (was SLEW CCW)
+        case PWM_4_CYLINDER_2_IN:   TIM3->CCR4 = ccr_value; break;  // PB1  (was CYL2 OUT)
 
         // TIM2 channels
-        case PWM_14_OUTRIGGER_LEFT_DOWN: TIM2->CCR1 = ccr_value; break;  // PA0
-        case PWM_1_CYLINDER_1_OUT:  TIM2->CCR2 = ccr_value; break;  // PA1
-        case PWM_13_OUTRIGGER_LEFT_UP: TIM2->CCR3 = ccr_value; break;  // PA2
-        case PWM_2_CYLINDER_1_IN:   TIM2->CCR4 = ccr_value; break;  // PA3
+        case PWM_13_OUTRIGGER_LEFT_UP:   TIM2->CCR1 = ccr_value; break;  // PA0  (was OUTRIG L DOWN)
+        case PWM_2_CYLINDER_1_IN:   TIM2->CCR2 = ccr_value; break;  // PA1  (was CYL1 OUT)
+        case PWM_14_OUTRIGGER_LEFT_DOWN: TIM2->CCR3 = ccr_value; break;  // PA2  (was OUTRIG L UP)
+        case PWM_1_CYLINDER_1_OUT:  TIM2->CCR4 = ccr_value; break;  // PA3  (was CYL1 IN)
 
-        // TIM4 channels (Note: PWM_9_TOOL_1/PD14 excluded - GPIO controlled via GPIO_SetTool1())
-        case PWM_10_TOOL_2:         TIM4->CCR1 = ccr_value; break;  // PD12
-        case PWM_7_CYLINDER_4_OUT:  TIM4->CCR2 = ccr_value; break;  // PD13
-        case PWM_8_CYLINDER_4_IN:   TIM4->CCR4 = ccr_value; break;  // PD15
+        // TIM4 channels (Tools 1/2 excluded - GPIO via GPIO_SetTool1()/GPIO_SetTool2())
+        case PWM_8_CYLINDER_4_IN:   TIM4->CCR2 = ccr_value; break;  // PD13 (was CYL4 OUT)
+        case PWM_7_CYLINDER_4_OUT:  TIM4->CCR4 = ccr_value; break;  // PD15 (was CYL4 IN)
 
         // TIM1 channels
-        case PWM_4_CYLINDER_2_IN:   TIM1->CCR1 = ccr_value; break;  // PE9 (CH1)
-        case PWM_5_CYLINDER_3_OUT:  TIM1->CCR2 = ccr_value; break;  // PE11
-        case PWM_6_CYLINDER_3_IN:   TIM1->CCR3 = ccr_value; break;  // PE13
-        case PWM_11_SLEW_CW:        TIM1->CCR4 = ccr_value; break;  // PE14
+        case PWM_3_CYLINDER_2_OUT:  TIM1->CCR1 = ccr_value; break;  // PE9  (was CYL2 IN)
+        case PWM_6_CYLINDER_3_IN:   TIM1->CCR2 = ccr_value; break;  // PE11 (was CYL3 OUT)
+        case PWM_5_CYLINDER_3_OUT:  TIM1->CCR3 = ccr_value; break;  // PE13 (was CYL3 IN)
+        case PWM_12_SLEW_CCW:       TIM1->CCR4 = ccr_value; break;  // PE14 (was SLEW CW)
 
         default: break;
     }
@@ -426,8 +425,9 @@ void PWM_StopAll(void)
     // Clear duty array
     memset(pwm_duty, 0, sizeof(pwm_duty));
 
-    // Also turn off Tool 1 GPIO
+    // Also turn off Tool GPIOs
     GPIO_SetTool1(0);
+    GPIO_SetTool2(0);
 }
 
 /**
@@ -436,6 +436,23 @@ void PWM_StopAll(void)
   * @retval None
   */
 void GPIO_SetTool1(uint8_t state)
+{
+    if (state)
+    {
+        GPIOD->BSRR = (1<<12);       // BS12 = set PD12 to HIGH
+    }
+    else
+    {
+        GPIOD->BSRR = (1<<(12+16));  // BR12 = reset PD12 to LOW
+    }
+}
+
+/**
+  * @brief  Set Tool 2 GPIO output (digital trigger, ON/OFF only)
+  * @param  state: 0 = OFF (LOW), 1 = ON (HIGH)
+  * @retval None
+  */
+void GPIO_SetTool2(uint8_t state)
 {
     if (state)
     {

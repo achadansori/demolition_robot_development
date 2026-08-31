@@ -39,6 +39,7 @@ typedef struct {
     uint16_t r1;
     uint16_t r8;
     uint8_t motor_active;
+    uint8_t unlocked;
 } NRF24_ReceivedData_t;
 
 /* Exported constants --------------------------------------------------------*/
