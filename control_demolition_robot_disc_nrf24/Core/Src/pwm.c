@@ -178,6 +178,15 @@ static void PWM_TIM1_Init(void)
     // IMPORTANT: Enable main output for advanced timers (TIM1, TIM8)
     TIM1->BDTR |= TIM_BDTR_MOE;
 
+    // Load PSC/ARR/CCR now instead of waiting for the first natural overflow.
+    // PSC is always preloaded, and CCRx is preloaded here because OCxPE is set,
+    // so without this the first period would run with the reset PSC (0) - about
+    // 60 us at 168 MHz instead of the intended 10 ms - before correcting itself.
+    // Clear UIF afterwards: UG sets it, and a stale flag would fire immediately
+    // if anyone enables the update interrupt later.
+    TIM1->EGR |= TIM_EGR_UG;
+    TIM1->SR &= ~TIM_SR_UIF;
+
     // Start timer
     TIM1->CR1 |= TIM_CR1_CEN;
 }
@@ -215,6 +224,10 @@ static void PWM_TIM2_Init(void)
 
     // Enable auto-reload preload
     TIM2->CR1 |= TIM_CR1_ARPE;
+
+    // Load PSC/ARR/CCR immediately (see TIM1 above)
+    TIM2->EGR |= TIM_EGR_UG;
+    TIM2->SR &= ~TIM_SR_UIF;
 
     // Start timer
     TIM2->CR1 |= TIM_CR1_CEN;
@@ -254,6 +267,10 @@ static void PWM_TIM3_Init(void)
     // Enable auto-reload preload
     TIM3->CR1 |= TIM_CR1_ARPE;
 
+    // Load PSC/ARR/CCR immediately (see TIM1 above)
+    TIM3->EGR |= TIM_EGR_UG;
+    TIM3->SR &= ~TIM_SR_UIF;
+
     // Start timer
     TIM3->CR1 |= TIM_CR1_CEN;
 }
@@ -291,6 +308,10 @@ static void PWM_TIM4_Init(void)
 
     // Enable auto-reload preload
     TIM4->CR1 |= TIM_CR1_ARPE;
+
+    // Load PSC/ARR/CCR immediately (see TIM1 above)
+    TIM4->EGR |= TIM_EGR_UG;
+    TIM4->SR &= ~TIM_SR_UIF;
 
     // Start timer
     TIM4->CR1 |= TIM_CR1_CEN;
@@ -332,6 +353,10 @@ static void PWM_TIM8_Init(void)
 
     // IMPORTANT: Enable main output for advanced timers (TIM1, TIM8)
     TIM8->BDTR |= TIM_BDTR_MOE;
+
+    // Load PSC/ARR/CCR immediately (see TIM1 above)
+    TIM8->EGR |= TIM_EGR_UG;
+    TIM8->SR &= ~TIM_SR_UIF;
 
     // Start timer
     TIM8->CR1 |= TIM_CR1_CEN;
