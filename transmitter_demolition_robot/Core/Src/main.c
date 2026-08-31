@@ -154,7 +154,7 @@ int main(void)
   uint32_t tx_not_ready = 0;
 
 
-  // SLEEP mode variables
+  // SLEEP mode
   uint8_t sleep_mode_active = 1;  // Start in SLEEP mode for safety!
   uint8_t sleep_transition_steps = 0;
   uint8_t safety_check_passed = 0;
@@ -174,6 +174,7 @@ int main(void)
   // tampilan dengan keadaan robot - lihat LINK_LOST_MS di bawah.
   uint32_t last_tx_ok_ms = HAL_GetTick();
   #define LINK_LOST_MS 1000u  // > COMM_TIMEOUT_MS (500) milik control board
+  uint8_t link_was_up = 1;   // untuk mendeteksi TEPI link hidup -> mati
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps transition
   #define S1_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (exit SLEEP)
@@ -487,14 +488,22 @@ int main(void)
         // ambang berbasis jumlah paket hanya bernilai puluhan milidetik dan
         // kedipan RF sekejap sudah cukup untuk mematikan motor.
         //
+        // Hanya pada TEPI hidup->mati, sekali. Versi sebelumnya menjalankan
+        // ini terus-menerus selama link mati dan ikut menolkan
+        // s2_1_hold_counter, sehingga counter bolak-balik 0->1 dan progress
+        // hold mentok di 5% - motor tidak akan pernah bisa distart selama
+        // link belum nyambung. Counter TIDAK boleh disentuh di sini: operator
+        // harus tetap bisa menahan S2_1 walau link sedang mati.
+        //
         // Ini murni penyelarasan tampilan. Otoritasnya tetap di control board
         // (Control_RequireMotorRestart), jadi kalau penilaian di sini sesekali
         // meleset tidak ada konsekuensi keselamatan.
-        if ((HAL_GetTick() - last_tx_ok_ms) > LINK_LOST_MS)
+        uint8_t link_up = ((HAL_GetTick() - last_tx_ok_ms) <= LINK_LOST_MS);
+        if (!link_up && link_was_up)
         {
             motor_active = 0;
-            s2_1_hold_counter = 0;
         }
+        link_was_up = link_up;
 
         if (tx_data.switches.s2_1 == 1)
         {
