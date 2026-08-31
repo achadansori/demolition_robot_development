@@ -145,6 +145,10 @@ int main(void)
   // Noise filter: Requires TIMEOUT_NOISE_FILTER consecutive failures before triggering
   #define COMM_TIMEOUT_MS         500     // 500ms timeout (10 missed packets @ 50ms rate)
   #define SAFETY_TRANSITION_STEPS 20      // 20 steps for smooth transition to 0
+  // CATATAN: ini dihitung per ITERASI LOOP, bukan per paket. Main loop
+  // free-running (tidak ada delay), jadi 5 hitungan tercapai dalam hitungan
+  // mikrodetik setelah ambang 500 ms lewat - praktis tidak menambah peredaman.
+  // Yang benar-benar menyaring noise adalah COMM_TIMEOUT_MS itu sendiri.
   #define TIMEOUT_NOISE_FILTER    5       // Require 5 consecutive timeouts before safety mode
 
   uint32_t last_data_received_time = 0;   // Timestamp of last valid NRF24 packet
@@ -161,6 +165,10 @@ int main(void)
   uint32_t rx_packet_count = 0;
   uint32_t can_packet_count = 0;          // Packets that arrived over the wire
   uint8_t  last_src_is_can = 0;           // Transport of the most recent packet
+  // MISS: bertambah tiap iterasi loop yang tidak menemukan paket. Loop ini
+  // free-running, jadi nilainya mengukur kecepatan loop - BUKAN paket hilang,
+  // dan tetap puluhan ribu per detik walau link sempurna. Pakai PKT/CANPKT
+  // untuk menilai link; MISS hanya berguna sebagai tanda loop masih berputar.
   uint32_t no_data_count = 0;
   uint32_t last_diag_time = 0;
 
@@ -401,7 +409,19 @@ int main(void)
         safety_mode_active = 1;
         safety_transition_step = 0;
 
-        Debug_Printf("TIMEOUT! Entering safety mode...\r\n");
+        // Rekam kondisi radio TEPAT saat putus, sebelum self-heal 3 detik
+        // sempat memperbaikinya. Diagnostik 1 detik sering ketinggalan momen
+        // ini. Nilainya yang memisahkan tiga penyebab yang gejalanya sama:
+        //   CFG=0x0F CH=76      -> konfigurasi utuh, sinyal RF-nya yang hilang
+        //   CFG=0x08 CH=2       -> nilai default pabrik = radio ke-reset,
+        //                          artinya supply drop / brownout
+        //   CFG atau ST 0x00/0xFF -> SPI tidak menjawab = wiring PB13/14/15
+        uint8_t t_cfg = NRF24_ReadReg(0x00);
+        uint8_t t_st  = NRF24_ReadReg(0x07);
+        uint8_t t_ch  = NRF24_ReadReg(0x05);
+
+        Debug_Printf("TIMEOUT! CFG=0x%02X ST=0x%02X CH=%d (0x0F/76=RF, 0x08/2=reset, 00|FF=SPI)\r\n",
+                     t_cfg, t_st, t_ch);
 
         for (uint8_t i = 0; i < PWM_CHANNEL_COUNT; i++)
         {
@@ -417,6 +437,15 @@ int main(void)
 
         // ENTER SLEEP MODE: Set PE6 to LOW
         GPIOE->BSRR = (1<<(6+16));  // BR6 = reset PE6 to LOW
+
+        // Relay emergency ikut dilepas. Selama safety mode Control_Update()
+        // tidak dipanggil sama sekali (ramp-down memanggil PWM_SetDutyCycle()
+        // langsung), jadi PB8 tidak akan tersentuh sampai link balik - tanpa
+        // baris ini sistem tetap "armed" padahal link sudah mati. Jalur CAN di
+        // control_demolition_robot menurunkan PB8 lewat cabang s0==0; ini
+        // menyamakan perilakunya. Saat link balik Control_Update() menaikkannya
+        // lagi kalau s0 masih 1, jadi tidak ada lockout.
+        GPIOB->BSRR = (1<<(8+16));  // BR8 = reset PB8 to LOW
 
         // Sinyal putus: motor tidak boleh hidup sendiri saat link balik.
         // Operator wajib start ulang dari remote (S2_1 OFF lalu ON).
