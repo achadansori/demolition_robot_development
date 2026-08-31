@@ -44,6 +44,7 @@ void OLED_FillRect(uint8_t x, uint8_t y, uint8_t w, uint8_t h);
 void OLED_InvertDisplay(bool invert);
 
 /* Display functions for robot data */
+void OLED_SetTransport(uint8_t is_can);  /* 0 = NRF24 (bars + %), 1 = CAN ("CAN") */
 void OLED_ShowSplashScreen(void);
 void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active, uint8_t calibrating, uint8_t link_quality);
 void OLED_DrawBatteryBar(uint8_t x, uint8_t y, uint8_t battery_percent);

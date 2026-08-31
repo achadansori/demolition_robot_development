@@ -34,6 +34,7 @@ bool NRF24_IsConnected(void);
 bool NRF24_IsReady(void);
 uint8_t NRF24_GetStatus(void);
 uint8_t NRF24_GetLinkQuality(void);  // Rolling link quality 0-100 from ACK results
+void NRF24_PowerDown(void);          // CE low + PWR_UP=0 (CAN mode)
 
 #ifdef __cplusplus
 }
