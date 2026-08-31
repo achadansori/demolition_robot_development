@@ -484,6 +484,10 @@ int main(void)
     // Update motor state in tx_data before transmission
     tx_data.switches.motor_active = motor_active;
 
+    // Unlock state: 1 = sudah keluar SLEEP (S1_1 ditahan), 0 = masih terkunci
+    // Control board pakai ini untuk mengizinkan PWM solenoid tanpa start motor
+    tx_data.switches.unlocked = !sleep_mode_active;
+
     // Transmit via NRF24 using BINARY format (8 bytes)
     if (NRF24_IsReady())
     {

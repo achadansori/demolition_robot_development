@@ -21,6 +21,17 @@
 #define SMOOTH_CURVE_ENABLED 0      // OFF - linear mapping (no delay)
 
 /* Private variables ---------------------------------------------------------*/
+// Latch unlock: 1 = lock sudah dibuka, PWM solenoid boleh keluar tanpa start
+// motor. Di-set dari s1_1/unlocked/motor_active, direset hanya oleh EMERGENCY.
+static uint8_t unlock_latch = 0;
+
+// Wajib start ulang dari remote: di-set saat sinyal putus (safety mode).
+// motor_active di TX sifatnya self-holding (S2_1 tombol momentary), jadi
+// re-arm TIDAK boleh menunggu motor_active jadi 0 - dideteksi dari tombol
+// S2_1 mentah yang ikut terkirim tiap paket: harus dilepas lalu ditekan lagi.
+static uint8_t motor_rearm_required = 0;
+static uint8_t s2_1_released = 0;
+
 // PWM limits per output channel (min, max) - adjustable per solenoid
 typedef struct {
     uint8_t min;  // Minimum PWM output (%)
@@ -41,8 +52,8 @@ static PWM_Limits_t pwm_limits[20] = {
     [PWM_6_CYLINDER_3_IN]            = {0, 100},  // Cylinder 3 IN (Bucket)
     [PWM_7_CYLINDER_4_OUT]           = {0, 100},  // Cylinder 4 OUT
     [PWM_8_CYLINDER_4_IN]            = {0, 100},  // Cylinder 4 IN
-    [PWM_9_TOOL_1]                   = {0, 100},  // Tool 1 (Reserved)
-    [PWM_10_TOOL_2]                  = {0, 100},  // Tool 2 (Reserved)
+    [PWM_9_TOOL_1]                   = {0, 100},  // Tool 1 (digital GPIO PD12 - limits unused)
+    [PWM_10_TOOL_2]                  = {0, 100},  // Tool 2 (digital GPIO PD14 - limits unused)
     [PWM_11_SLEW_CW]                 = {0, 100},  // Slew CW
     [PWM_12_SLEW_CCW]                = {0, 100},  // Slew CCW
     [PWM_13_OUTRIGGER_LEFT_UP]       = {0, 100},  // Outrigger Left UP
@@ -95,6 +106,7 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         PWM_StopAll();
         GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
         GPIO_SetTool1(0);
+        unlock_latch = 0;          // Emergency = kunci lagi, wajib unlock ulang
         return;  // Exit immediately - no further processing
     }
     else
@@ -103,11 +115,24 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     }
 
     // ========================================================================
-    // SLEEP MODE - motor_active = 0 (ALL PWM = 0)
+    // SLEEP MODE - unlocked = 0 (ALL PWM = 0)
     // ========================================================================
-    // When transmitter is in sleep mode or motor not yet started,
-    // all PWM outputs must be 0 for safety
-    if (lora_data->motor_active == 0)
+    // Gate PWM pada status unlock (S1_1), bukan motor start (S2_1), supaya
+    // solenoid bisa dites tanpa menyalakan motor. Relay PE6 tetap ikut
+    // motor_active di bawah.
+    //
+    // Latch di-set dari tiga sumber supaya tidak bergantung versi firmware TX:
+    //   s1_1        - tombol unlock mentah (TX menolkannya selama joystick
+    //                 belum center, jadi interlock SLEEP tetap berlaku)
+    //   unlocked    - bit 14, TX firmware baru
+    //   motor_active- TX firmware lama yang belum kirim bit 14
+    // Latch hanya direset oleh EMERGENCY (S0=0) di atas.
+    if (lora_data->s1_1 || lora_data->unlocked || lora_data->motor_active)
+    {
+        unlock_latch = 1;
+    }
+
+    if (unlock_latch == 0)
     {
         PWM_StopAll();
         GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
@@ -284,33 +309,16 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         // --------------------------------------------------------------------
         // BREAKER - 2 Valve Control
         // --------------------------------------------------------------------
-        // Valve 1 (GPIO PD14): ON/OFF digital trigger by joy_left_btn2
-        // Valve 2 (PWM_10): Flow control by R8 potentiometer (proportional)
+        // Valve 1 (GPIO PD12) and Valve 2 (GPIO PD14): both ON/OFF digital,
+        // driven together by joy_left_btn2. No proportional flow - the R8 pot
+        // that used to meter Valve 2 is gone from the transmitter.
         //
-        // joy_left_btn2 = 1 → Breaker ON (PD14 = HIGH)
-        // joy_left_btn2 = 0 → Breaker OFF (PD14 = LOW)
-        // R8: 0-255 → PWM_10: min-max% (respects pwm_limits)
+        // joy_left_btn2 = 1 → Breaker ON  (PD12 + PD14 HIGH)
+        // joy_left_btn2 = 0 → Breaker OFF (PD12 + PD14 LOW)
 
-        if (lora_data->joy_left_btn2 == 1)
-        {
-            GPIO_SetTool1(1);  // Valve 1: Breaker ON (digital HIGH)
-        }
-        else
-        {
-            GPIO_SetTool1(0);  // Valve 1: Breaker OFF (digital LOW)
-        }
-
-        // Valve 2: Flow control (proportional from R8)
-        // R8 range: 0-255 → PWM range: min-max% (respects pwm_limits)
-        uint8_t breaker_flow_raw = (lora_data->r8 * 100) / 255;
-        uint8_t breaker_flow = 0;
-        if (breaker_flow_raw > 0)
-        {
-            // Scale from 0-100% to min-max%
-            breaker_flow = pwm_limits[PWM_10_TOOL_2].min +
-                ((breaker_flow_raw * (pwm_limits[PWM_10_TOOL_2].max - pwm_limits[PWM_10_TOOL_2].min)) / 100);
-        }
-        PWM_SetDutyCycle(PWM_10_TOOL_2, breaker_flow);
+        uint8_t breaker_on = (lora_data->joy_left_btn2 == 1) ? 1 : 0;
+        GPIO_SetTool1(breaker_on);  // Valve 1
+        GPIO_SetTool2(breaker_on);  // Valve 2
 
         // Stop all mobility controls in UPPER mode
         PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
@@ -446,7 +454,7 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
         PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
         GPIO_SetTool1(0);                         // Stop Breaker Valve 1 (digital OFF)
-        PWM_SetDutyCycle(PWM_10_TOOL_2, 0);       // Stop Breaker Valve 2
+        GPIO_SetTool2(0);                         // Stop Breaker Valve 2 (digital OFF)
     }
 
     // ========================================================================
@@ -517,7 +525,7 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
         PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
         GPIO_SetTool1(0);                          // Stop Breaker Valve 1 (digital OFF)
-        PWM_SetDutyCycle(PWM_10_TOOL_2, 0);        // Stop Breaker Valve 2
+        GPIO_SetTool2(0);                          // Stop Breaker Valve 2 (digital OFF)
         PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
         PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
         PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
@@ -531,6 +539,27 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     // - motor_active = 1 → PE6 = HIGH (motor ON)
     // - motor_active = 0 → PE6 = LOW  (motor OFF)
     // Note: PE6 is also forced LOW during emergency (S0=0) and sleep mode
+    //
+    // Setelah sinyal putus, motor TIDAK boleh start sendiri: butuh transisi
+    // 0→1 pada motor_active (S2_1 dimatikan lalu dinyalakan lagi di remote).
+
+    if (motor_rearm_required)
+    {
+        if (lora_data->s2_1 == 0)
+        {
+            s2_1_released = 1;         // tombol dilepas
+        }
+        else if (s2_1_released)
+        {
+            motor_rearm_required = 0;  // ditekan lagi = start ulang, boleh arm
+        }
+
+        if (motor_rearm_required)
+        {
+            GPIOE->BSRR = (1<<(6+16)); // BR6 = tahan PE6 LOW sampai start ulang
+            return;
+        }
+    }
 
     if (lora_data->motor_active == 1)
     {
@@ -540,6 +569,16 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     {
         GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
     }
+}
+
+/**
+  * @brief  Paksa start ulang motor dari remote (dipanggil saat sinyal putus)
+  * @retval None
+  */
+void Control_RequireMotorRestart(void)
+{
+    motor_rearm_required = 1;
+    s2_1_released = 0;
 }
 
 /**

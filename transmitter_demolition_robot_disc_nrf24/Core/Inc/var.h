@@ -58,7 +58,8 @@ typedef struct {
     uint8_t s5_1            : 1;  // Bit 11
     uint8_t s5_2            : 1;  // Bit 12
     uint8_t motor_active    : 1;  // Bit 13 - Motor starter trigger
-    uint8_t reserved        : 2;  // Bit 14-15 (reserved untuk ekspansi)
+    uint8_t unlocked        : 1;  // Bit 14 - Keluar SLEEP (lock dibuka via S1_1)
+    uint8_t reserved        : 1;  // Bit 15 (reserved untuk ekspansi)
 } __attribute__((packed)) Switch_Data_t;
 
 /**

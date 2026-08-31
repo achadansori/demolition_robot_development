@@ -21,6 +21,7 @@ extern "C" {
 /* Public function prototypes ------------------------------------------------*/
 void Control_Init(void);
 void Control_Update(NRF24_ReceivedData_t *nrf24_data);
+void Control_RequireMotorRestart(void);
 
 #ifdef __cplusplus
 }

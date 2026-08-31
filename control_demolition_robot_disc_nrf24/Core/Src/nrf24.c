@@ -316,6 +316,7 @@ bool NRF24_GetData(NRF24_ReceivedData_t *data)
     data->s5_1 = (switches >> 11) & 0x01;
     data->s5_2 = (switches >> 12) & 0x01;
     data->motor_active = (switches >> 13) & 0x01;
+    data->unlocked = (switches >> 14) & 0x01;
 
     return true;
 }

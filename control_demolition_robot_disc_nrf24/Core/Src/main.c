@@ -119,7 +119,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2S3_Init();
-  MX_SPI1_Init();
+  MX_SPI2_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();  // Initialize USB CDC
   MX_TIM1_Init();
@@ -129,8 +129,9 @@ int main(void)
   MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
 
-  // CRITICAL: Deselect LIS302DL accelerometer on SPI1 bus
-  // PE3 (CS_I2C_SPI) must be HIGH to prevent bus conflict with NRF24
+  // Deselect the onboard LIS302DL accelerometer. The NRF24 has moved to SPI2
+  // (PB13/PB14/PB15), so PA5/PA6/PA7 are no longer driven - but keep PE3
+  // (CS_I2C_SPI) HIGH anyway so the MEMS never wakes onto the SPI1 lines.
   HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin, GPIO_PIN_SET);
 
   // ========================================================================
@@ -158,9 +159,9 @@ int main(void)
   uint32_t no_data_count = 0;
   uint32_t last_diag_time = 0;
 
-  // Initialize NRF24L01+ receiver (SPI1 - PE5=CSN, PA5=SCK, PA6=MISO, PA7=MOSI, PE4=CE)
+  // Initialize NRF24L01+ receiver (SPI2 - PE5=CSN, PB13=SCK, PB14=MISO, PB15=MOSI, PE4=CE)
   // Pin configuration based on main.h definitions
-  NRF24_Init(&hspi1, NRF_CE_GPIO_Port, NRF_CE_Pin, NRF_CSN_GPIO_Port, NRF_CSN_Pin);
+  NRF24_Init(&hspi2, NRF_CE_GPIO_Port, NRF_CE_Pin, NRF_CSN_GPIO_Port, NRF_CSN_Pin);
 
   // Wait for USB CDC to be ready
   HAL_Delay(2000);
@@ -168,12 +169,12 @@ int main(void)
   // Send startup message via USB CDC
   Debug_Printf("\r\n========================================\r\n");
   Debug_Printf("  NRF24 Receiver Started (USB CDC)\r\n");
-  Debug_Printf("  STM32F407VGT6 - SPI1\r\n");
+  Debug_Printf("  STM32F407VGT6 - SPI2\r\n");
   Debug_Printf("  CE: PE4 | CSN: PE5\r\n");
   Debug_Printf("========================================\r\n\r\n");
 
-  // RAW SPI1 TEST: Manual read of NRF24 STATUS register (0x07)
-  Debug_Printf("SPI1 RAW TEST...\r\n");
+  // RAW SPI2 TEST: Manual read of NRF24 STATUS register (0x07)
+  Debug_Printf("SPI2 RAW TEST...\r\n");
   {
       // Ensure PE3 HIGH (deselect LIS302DL)
       HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_SET);
@@ -185,7 +186,7 @@ int main(void)
       uint8_t cmd = 0xFF;
       uint8_t status = 0;
       HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_RESET);  // CSN LOW
-      HAL_SPI_TransmitReceive(&hspi1, &cmd, &status, 1, 100);
+      HAL_SPI_TransmitReceive(&hspi2, &cmd, &status, 1, 100);
       HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_SET);    // CSN HIGH
 
       Debug_Printf("  NOP -> STATUS=0x%02X (expect 0x0E)\r\n", status);
@@ -194,8 +195,8 @@ int main(void)
       cmd = 0x00;
       uint8_t config_val = 0;
       HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_RESET);
-      HAL_SPI_TransmitReceive(&hspi1, &cmd, &status, 1, 100);
-      HAL_SPI_Receive(&hspi1, &config_val, 1, 100);
+      HAL_SPI_TransmitReceive(&hspi2, &cmd, &status, 1, 100);
+      HAL_SPI_Receive(&hspi2, &config_val, 1, 100);
       HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_SET);
 
       Debug_Printf("  CONFIG=0x%02X (expect 0x08 default)\r\n", config_val);
@@ -204,8 +205,8 @@ int main(void)
       cmd = 0x05;
       uint8_t rfch_val = 0;
       HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_RESET);
-      HAL_SPI_TransmitReceive(&hspi1, &cmd, &status, 1, 100);
-      HAL_SPI_Receive(&hspi1, &rfch_val, 1, 100);
+      HAL_SPI_TransmitReceive(&hspi2, &cmd, &status, 1, 100);
+      HAL_SPI_Receive(&hspi2, &rfch_val, 1, 100);
       HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_SET);
 
       Debug_Printf("  RF_CH=0x%02X (expect 0x02 default)\r\n", rfch_val);
@@ -216,9 +217,9 @@ int main(void)
           HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_5));
 
       if (status == 0x00 && config_val == 0x00)
-          Debug_Printf("  ** NRF24 NOT RESPONDING on SPI1! Check wiring **\r\n");
+          Debug_Printf("  ** NRF24 NOT RESPONDING on SPI2! Check wiring **\r\n");
       else
-          Debug_Printf("  ** SPI1 communication OK **\r\n");
+          Debug_Printf("  ** SPI2 communication OK **\r\n");
   }
   Debug_Printf("\r\n");
 
@@ -316,7 +317,7 @@ int main(void)
             raw_payload[0], raw_payload[1], raw_payload[2], raw_payload[3],
             raw_payload[4], raw_payload[5], raw_payload[6], raw_payload[7]);
 
-        Debug_Printf("  LX=%3d LY=%3d RX=%3d RY=%3d | S0=%d S1=%d%d S2=%d%d S4=%d%d S5=%d%d | M=%d\r\n",
+        Debug_Printf("  LX=%3d LY=%3d RX=%3d RY=%3d | S0=%d S1=%d%d S2=%d%d S4=%d%d S5=%d%d | U=%d M=%d\r\n",
             nrf24_data.joy_left_x, nrf24_data.joy_left_y,
             nrf24_data.joy_right_x, nrf24_data.joy_right_y,
             nrf24_data.s0,
@@ -324,8 +325,21 @@ int main(void)
             nrf24_data.s2_1, nrf24_data.s2_2,
             nrf24_data.s4_1, nrf24_data.s4_2,
             nrf24_data.s5_1, nrf24_data.s5_2,
+            nrf24_data.unlocked,
             nrf24_data.motor_active
         );
+
+        // Radio hanya di-init sekali di boot dan reset MCU tidak mereset chip
+        // nRF24. Kalau link mati (supply belum stabil saat cold boot, brownout
+        // relay, glitch SPI) satu-satunya pemulihan dulu adalah tombol reset.
+        // Konfigurasi ulang di sini = tombol reset otomatis, 1x per detik.
+        // Ambang 3 detik, bukan COMM_TIMEOUT_MS: fading RF biasa jangan
+        // sampai memicu power-cycle radio (~15ms buta) tiap detik.
+        if (time_since_last_data > 3000)
+        {
+            NRF24_Configure();
+            NRF24_StartListening();
+        }
 
         last_diag_time = current_time;
         no_data_count = 0;
@@ -368,6 +382,10 @@ int main(void)
 
         // ENTER SLEEP MODE: Set PE6 to LOW
         GPIOE->BSRR = (1<<(6+16));  // BR6 = reset PE6 to LOW
+
+        // Sinyal putus: motor tidak boleh hidup sendiri saat link balik.
+        // Operator wajib start ulang dari remote (S2_1 OFF lalu ON).
+        Control_RequireMotorRestart();
       }
     }
 
