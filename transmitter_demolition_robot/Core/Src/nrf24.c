@@ -463,3 +463,19 @@ uint8_t NRF24_GetLinkQuality(void)
     if (lq_count == 0) return 0;
     return (uint8_t)(lq_sum / lq_count);
 }
+
+/**
+  * @brief  Put the radio in power-down: CE low and PWR_UP cleared.
+  * @note   Used when the wired CAN link takes over, so the radio's transmit
+  *         current is out of the picture while the power supply is under
+  *         suspicion. NRF24_Configure() brings it back - it already starts
+  *         with this exact sequence.
+  * @retval None
+  */
+void NRF24_PowerDown(void)
+{
+    if (!nrf24_ready) return;
+
+    NRF24_CE_LOW();
+    NRF24_WriteRegister(NRF24_REG_CONFIG, 0x00);
+}

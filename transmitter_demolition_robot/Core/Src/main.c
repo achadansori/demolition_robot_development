@@ -26,6 +26,7 @@
 #include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
+#include "ctrl_can.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -117,6 +118,10 @@ int main(void)
   // Re-configure switch pins with internal pull-down (survives CubeMX regeneration)
   MX_GPIO_ConfigureSwitchPullDown();
 
+  // CAN filter + start. Harmless with no transceiver attached: without a
+  // heartbeat the transmitter simply stays on the radio.
+  CtrlCAN_Init();
+
   // Read initial S0 state (EXTI only triggers on edges, need initial state)
   if (HAL_GPIO_ReadPin(S0_GPIO_Port, S0_Pin) == GPIO_PIN_RESET)
   {
@@ -159,6 +164,10 @@ int main(void)
   uint8_t calibration_done = 0;
   uint8_t s2_1_hold_counter = 0;
   uint8_t last_s0_state = 1;  // Track S0 state to detect S0 transitions (0→1)
+
+  // Transport: 0 = NRF24 radio, 1 = wired CAN (cable plugged in)
+  uint8_t can_mode = 0;
+  uint32_t last_can_tx_ms = 0;
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps transition
   #define S1_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (exit SLEEP)
@@ -484,26 +493,74 @@ int main(void)
     // Update motor state in tx_data before transmission
     tx_data.switches.motor_active = motor_active;
 
-    // Transmit via NRF24 using BINARY format (8 bytes)
-    if (NRF24_IsReady())
+    // Transport select: wired CAN when the cable is plugged in, radio otherwise.
+    // The control board's heartbeat is what "plugged in" means - no switch, and
+    // no guessing from error counters.
+    CtrlCAN_Poll();
+
+    if (CtrlCAN_IsLinkUp())
     {
-        if (NRF24_SendBinary(Var_GetBinaryData(), Var_GetDataSize()))
+        if (!can_mode)
         {
-            tx_ok_count++;
-            // Transmission success - brief green LED blink
-            HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
+            // Powering the radio down is the point of the CAN path: it takes
+            // the radio's transmit current out of the picture entirely. The
+            // control board then stops sending ACK bursts too, because nothing
+            // is arriving there - so its radio current drops as well.
+            NRF24_PowerDown();
+            can_mode = 1;
         }
-        else
+
+        // Throttle: the loop is free-running, and at 500 kbps an unthrottled
+        // loop would saturate the bus. 20 ms = 50 Hz, faster than the 50 ms
+        // TPDO rate the CANopen bridge uses.
+        if ((HAL_GetTick() - last_can_tx_ms) >= CTRL_CAN_SEND_PERIOD_MS)
         {
-            tx_fail_count++;
-            // Transmission failed - blue LED
-            HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin, GPIO_PIN_SET);
+            last_can_tx_ms = HAL_GetTick();
+
+            if (CtrlCAN_Send(Var_GetBinaryData()))
+            {
+                tx_ok_count++;
+                HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
+            }
+            else
+            {
+                tx_fail_count++;
+                HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin, GPIO_PIN_SET);
+            }
         }
     }
     else
     {
-        tx_not_ready++;
+        if (can_mode)
+        {
+            // Cable unplugged - bring the radio back up.
+            NRF24_Configure();
+            can_mode = 0;
+        }
+
+        // Transmit via NRF24 using BINARY format (8 bytes)
+        if (NRF24_IsReady())
+        {
+            if (NRF24_SendBinary(Var_GetBinaryData(), Var_GetDataSize()))
+            {
+                tx_ok_count++;
+                // Transmission success - brief green LED blink
+                HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
+            }
+            else
+            {
+                tx_fail_count++;
+                // Transmission failed - blue LED
+                HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin, GPIO_PIN_SET);
+            }
+        }
+        else
+        {
+            tx_not_ready++;
+        }
     }
+
+    OLED_SetTransport(can_mode);
 
     // Update OLED display (every 10 cycles = ~500ms)
     if (tx_data.switches.s0 == 1)
@@ -514,6 +571,7 @@ int main(void)
         static uint8_t last_hold_counter = 0;
         static uint8_t last_motor_state = 0;
         static uint8_t last_cal_state = 0;
+        static uint8_t last_can_mode = 0;
 
         uint8_t current_hold_progress = sleep_mode_active ? s1_1_hold_counter : s2_1_hold_counter;
 
@@ -522,6 +580,7 @@ int main(void)
             current_hold_progress != last_hold_counter ||
             motor_active != last_motor_state ||
             s1_2_hold_counter != last_cal_state ||
+            can_mode != last_can_mode ||
             ++oled_counter >= 10)
         {
             oled_counter = 0;
@@ -530,6 +589,7 @@ int main(void)
             last_hold_counter = current_hold_progress;
             last_motor_state = motor_active;
             last_cal_state = s1_2_hold_counter;
+            last_can_mode = can_mode;
             uint8_t cal_progress = calibration_done ? 255 : s1_2_hold_counter;  // 255 = done
 
             // Link quality (0-100 from robot Auto-ACK): the raw rolling

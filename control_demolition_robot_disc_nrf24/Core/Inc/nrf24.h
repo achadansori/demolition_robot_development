@@ -95,6 +95,7 @@ bool NRF24_Configure(void);
 void NRF24_StartListening(void);
 bool NRF24_IsDataAvailable(void);
 bool NRF24_GetData(NRF24_ReceivedData_t *data);
+void NRF24_DecodePayload(const uint8_t payload[8], NRF24_ReceivedData_t *data);
 void NRF24_IRQHandler(void);
 uint8_t NRF24_ReadReg(uint8_t reg);
 

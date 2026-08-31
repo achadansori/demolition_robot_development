@@ -53,6 +53,11 @@ static uint8_t oled_buffer[OLED_BUFFER_SIZE];
 static uint8_t cursor_x = 0;
 static uint8_t cursor_y = 0;
 
+/* Which link is carrying the control packet right now (0 = NRF24, 1 = CAN).
+ * File-scope with a setter instead of a 10th parameter on OLED_ShowModeScreen,
+ * which already takes nine and is called from exactly one place. */
+static uint8_t transport_is_can = 0;
+
 /* Logo bitmap - Aldzama Demolition Robot 128x64px */
 /* Logo bitmap - Aldzama Demolition Robot 128x64px */
 static const uint8_t logo_aldzama[] = {
@@ -697,6 +702,11 @@ void OLED_DrawSignalBars(uint8_t x, uint8_t y, uint8_t quality)
   * @param  calibrating: S1_2 state (0 = idle, 1-20 = hold progress, 255 = done)
   * @retval None
   */
+void OLED_SetTransport(uint8_t is_can)
+{
+    transport_is_can = is_can ? 1 : 0;
+}
+
 void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_data, uint8_t sleep_mode, uint8_t safety_ok, uint8_t hold_progress, uint8_t motor_active, uint8_t calibrating, uint8_t link_quality)
 {
     OLED_Clear();
@@ -705,16 +715,30 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
     uint8_t battery_percent = joystick_data[4];
 
     // ========================================================================
-    // TOP BAR: Signal strength (left) + Battery (right)
+    // TOP BAR: Transport / signal strength (left) + Battery (right)
     // ========================================================================
-    // Signal icon + percentage (replaces the old "DEMOLITION" title).
-    // Reflects the NRF24 link quality back from the robot's Auto-ACK.
-    OLED_DrawSignalBars(0, 1, link_quality);
+    // Drawn before the y=10 separator and before the three body branches that
+    // return early, so the transport indicator shows on every screen (SLEEP,
+    // MOTOR READY and running) from this one place.
+    if (transport_is_can)
+    {
+        // Wired CAN: the radio is powered down, so signal bars and a link
+        // percentage would be stale numbers about a radio that is not running.
+        // Replace the whole block rather than adding next to it.
+        OLED_SetCursor(0, 1);
+        OLED_WriteString("CAN", FONT_SIZE_NORMAL);
+    }
+    else
+    {
+        // Signal icon + percentage (replaces the old "DEMOLITION" title).
+        // Reflects the NRF24 link quality back from the robot's Auto-ACK.
+        OLED_DrawSignalBars(0, 1, link_quality);
 
-    char sig_text[8];
-    snprintf(sig_text, sizeof(sig_text), "%d%%", link_quality);
-    OLED_SetCursor(20, 2);
-    OLED_WriteString(sig_text, FONT_SIZE_SMALL);
+        char sig_text[8];
+        snprintf(sig_text, sizeof(sig_text), "%d%%", link_quality);
+        OLED_SetCursor(20, 2);
+        OLED_WriteString(sig_text, FONT_SIZE_SMALL);
+    }
 
     // Battery bar at top-right (centered vertically at y=1)
     OLED_DrawBatteryBar(72, 1, battery_percent);

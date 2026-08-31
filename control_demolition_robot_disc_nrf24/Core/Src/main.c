@@ -21,6 +21,8 @@
 #include "nrf24.h"
 #include "control.h"
 #include "pwm.h"
+#include "can.h"
+#include "ctrl_can.h"
 #include "usbd_cdc_if.h"
 #include <stdio.h>
 #include <string.h>
@@ -127,6 +129,7 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM4_Init();
   MX_TIM8_Init();
+  MX_CAN1_Init();
   /* USER CODE BEGIN 2 */
 
   // Deselect the onboard LIS302DL accelerometer. The NRF24 has moved to SPI2
@@ -156,6 +159,8 @@ int main(void)
 
   // Packet counters for diagnostics
   uint32_t rx_packet_count = 0;
+  uint32_t can_packet_count = 0;          // Packets that arrived over the wire
+  uint8_t  last_src_is_can = 0;           // Transport of the most recent packet
   uint32_t no_data_count = 0;
   uint32_t last_diag_time = 0;
 
@@ -240,6 +245,12 @@ int main(void)
   // Start listening for NRF24 data
   NRF24_StartListening();
 
+  // Start listening on the wire too, and begin announcing ourselves. Harmless
+  // with no transceiver attached: nothing arrives and the heartbeat frames are
+  // simply never acknowledged.
+  CtrlCAN_Init();
+  Debug_Printf("CAN1 listening on PD0/PD1 @ 500 kbps (ID 0x181)\r\n\r\n");
+
   // Initialize control system (PWM outputs)
   Control_Init();
 
@@ -264,36 +275,56 @@ int main(void)
     uint32_t current_time = HAL_GetTick();
     uint32_t time_since_last_data = current_time - last_data_received_time;
 
-    // Check if new data is available
-    if (NRF24_IsDataAvailable())
+    // Listen on both transports. CAN wins when a frame is there: if the cable
+    // is plugged in it is the link under test, and it carries the identical
+    // 8-byte packet (ctrl_link.h) so the decode is shared with the radio path.
+    uint8_t can_payload[8];
+    uint8_t got_data = 0;
+
+    if (CtrlCAN_GetData(can_payload))
     {
-      // Get received data
-      if (NRF24_GetData(&nrf24_data))
-      {
-        rx_packet_count++;
-
-        // Update timestamp - we received valid data!
-        last_data_received_time = current_time;
-
-        // Reset timeout noise counter - valid data received
-        timeout_noise_counter = 0;
-
-        // If recovering from safety mode, restore normal operation
-        if (safety_mode_active)
-        {
-          safety_mode_active = 0;
-          safety_transition_step = 0;
-          // PWM will be restored by Control_Update() below
-        }
-
-        // Update control outputs based on received data (normal operation)
-        Control_Update(&nrf24_data);
-      }
+      NRF24_DecodePayload(can_payload, &nrf24_data);
+      can_packet_count++;
+      last_src_is_can = 1;
+      got_data = 1;
+    }
+    else if (NRF24_IsDataAvailable() && NRF24_GetData(&nrf24_data))
+    {
+      rx_packet_count++;
+      last_src_is_can = 0;
+      got_data = 1;
     }
     else
     {
       no_data_count++;
     }
+
+    if (got_data)
+    {
+      // Update timestamp - we received valid data!
+      // Both transports stamp the same variable, which is the only thing the
+      // timeout watchdog, the ramp-down and the motor re-arm look at - so the
+      // whole safety path stays transport-agnostic with no changes.
+      last_data_received_time = current_time;
+
+      // Reset timeout noise counter - valid data received
+      timeout_noise_counter = 0;
+
+      // If recovering from safety mode, restore normal operation
+      if (safety_mode_active)
+      {
+        safety_mode_active = 0;
+        safety_transition_step = 0;
+        // PWM will be restored by Control_Update() below
+      }
+
+      // Update control outputs based on received data (normal operation)
+      Control_Update(&nrf24_data);
+    }
+
+    // Tell the transmitter the cable is connected. Must keep running even while
+    // no control packet arrives - it is the transmitter's only switch signal.
+    CtrlCAN_HeartbeatTask();
 
     // Diagnostic output every 1 second
     if ((current_time - last_diag_time) >= 1000)
@@ -305,8 +336,12 @@ int main(void)
         uint8_t reg_rfset  = NRF24_ReadReg(0x06);
         uint8_t reg_fifo   = NRF24_ReadReg(0x17);
 
-        Debug_Printf("PKT=%lu MISS=%lu | CFG=0x%02X ST=0x%02X CH=%d RF=0x%02X FIFO=0x%02X\r\n",
-            rx_packet_count, no_data_count,
+        // SRC = which transport delivered the last packet. Comparing the PKT
+        // and CANPKT deltas against the transmitter's OK/FAIL counters is what
+        // tells apart "packets are lost" from "only the ACKs are lost".
+        Debug_Printf("SRC=%s PKT=%lu CANPKT=%lu MISS=%lu | CFG=0x%02X ST=0x%02X CH=%d RF=0x%02X FIFO=0x%02X\r\n",
+            last_src_is_can ? "CAN" : "RF",
+            rx_packet_count, can_packet_count, no_data_count,
             reg_config, reg_status, reg_rfch, reg_rfset, reg_fifo);
 
         // Read raw NRF24 data for diagnostics

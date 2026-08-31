@@ -291,6 +291,22 @@ bool NRF24_GetData(NRF24_ReceivedData_t *data)
     // Flush RX FIFO to prevent stale data on next read
     NRF24_SendCommand(NRF24_CMD_FLUSH_RX);
 
+    NRF24_DecodePayload(payload, data);
+
+    return true;
+}
+
+/**
+  * @brief  Unpack the 8-byte control packet into the working struct
+  * @param  payload: the 8 bytes as they arrived, from any transport
+  * @param  data: destination
+  * @note   Nothing here is radio-specific - the wired CAN path carries the
+  *         identical layout (see ctrl_link.h), so both transports decode here
+  *         and the byte/bit map lives in exactly one place.
+  * @retval None
+  */
+void NRF24_DecodePayload(const uint8_t payload[8], NRF24_ReceivedData_t *data)
+{
     // Parse binary payload (same format as transmitter)
     // Direct copy from packet buffer (8 bytes format)
     data->joy_left_x = payload[0];
@@ -317,8 +333,6 @@ bool NRF24_GetData(NRF24_ReceivedData_t *data)
     data->s5_2 = (switches >> 12) & 0x01;
     data->motor_active = (switches >> 13) & 0x01;
     data->unlocked = (switches >> 14) & 0x01;
-
-    return true;
 }
 
 /**
