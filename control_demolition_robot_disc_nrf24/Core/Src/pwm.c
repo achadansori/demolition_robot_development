@@ -90,35 +90,35 @@ static void PWM_ConfigureGPIO(void)
     GPIOE->MODER |= (2<<(9*2)) | (2<<(11*2)) | (2<<(13*2)) | (2<<(14*2));  // Alternate function
     GPIOE->AFR[1] &= ~((0xF<<((9-8)*4)) | (0xF<<((11-8)*4)) | (0xF<<((13-8)*4)) | (0xF<<((14-8)*4)));
     GPIOE->AFR[1] |= (1<<((9-8)*4)) | (1<<((11-8)*4)) | (1<<((13-8)*4)) | (1<<((14-8)*4));  // AF1
-    GPIOE->OSPEEDR |= (3<<(9*2)) | (3<<(11*2)) | (3<<(13*2)) | (3<<(14*2));  // High speed
+    GPIOE->OSPEEDR &= ~((3<<(9*2)) | (3<<(11*2)) | (3<<(13*2)) | (3<<(14*2)));  // slew LOW: switching 500 Hz ke base TIP122
 
     // Configure TIM2 pins (PA0, PA1, PA2, PA3) - AF1
     GPIOA->MODER &= ~((3<<(0*2)) | (3<<(1*2)) | (3<<(2*2)) | (3<<(3*2)));
     GPIOA->MODER |= (2<<(0*2)) | (2<<(1*2)) | (2<<(2*2)) | (2<<(3*2));
     GPIOA->AFR[0] &= ~((0xF<<(0*4)) | (0xF<<(1*4)) | (0xF<<(2*4)) | (0xF<<(3*4)));
     GPIOA->AFR[0] |= (1<<(0*4)) | (1<<(1*4)) | (1<<(2*4)) | (1<<(3*4));  // AF1
-    GPIOA->OSPEEDR |= (3<<(0*2)) | (3<<(1*2)) | (3<<(2*2)) | (3<<(3*2));
+    GPIOA->OSPEEDR &= ~((3<<(0*2)) | (3<<(1*2)) | (3<<(2*2)) | (3<<(3*2)));  // slew LOW: switching 500 Hz ke base TIP122
 
     // Configure TIM3 pins (PB0, PB1, PB4, PB5) - AF2
     GPIOB->MODER &= ~((3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2)));
     GPIOB->MODER |= (2<<(0*2)) | (2<<(1*2)) | (2<<(4*2)) | (2<<(5*2));
     GPIOB->AFR[0] &= ~((0xF<<(0*4)) | (0xF<<(1*4)) | (0xF<<(4*4)) | (0xF<<(5*4)));
     GPIOB->AFR[0] |= (2<<(0*4)) | (2<<(1*4)) | (2<<(4*4)) | (2<<(5*4));  // AF2
-    GPIOB->OSPEEDR |= (3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2));
+    GPIOB->OSPEEDR &= ~((3<<(0*2)) | (3<<(1*2)) | (3<<(4*2)) | (3<<(5*2)));  // slew LOW: switching 500 Hz ke base TIP122
 
     // Configure TIM4 pins (PD13, PD15) - AF2 (PD12/PD14 excluded - GPIO for Tools)
     GPIOD->MODER &= ~((3<<(13*2)) | (3<<(15*2)));
     GPIOD->MODER |= (2<<(13*2)) | (2<<(15*2));
     GPIOD->AFR[1] &= ~((0xF<<((13-8)*4)) | (0xF<<((15-8)*4)));
     GPIOD->AFR[1] |= (2<<((13-8)*4)) | (2<<((15-8)*4));  // AF2
-    GPIOD->OSPEEDR |= (3<<(13*2)) | (3<<(15*2));
+    GPIOD->OSPEEDR &= ~((3<<(13*2)) | (3<<(15*2)));  // slew LOW: switching 500 Hz ke base TIP122
 
     // Configure PD12 (Tool 1) and PD14 (Tool 2) as GPIO outputs (digital ON/OFF)
     GPIOD->MODER &= ~((3<<(12*2)) | (3<<(14*2)));
     GPIOD->MODER |= (1<<(12*2)) | (1<<(14*2));   // GPIO output mode
     GPIOD->OTYPER &= ~((1<<12) | (1<<14));       // Push-pull output
     GPIOD->PUPDR &= ~((3<<(12*2)) | (3<<(14*2)));// No pull-up, no pull-down
-    GPIOD->OSPEEDR |= (3<<(12*2)) | (3<<(14*2)); // High speed
+    GPIOD->OSPEEDR &= ~((3<<(12*2)) | (3<<(14*2)));  // slew LOW: switching 500 Hz ke base TIP122
     GPIOD->BSRR = (1<<(12+16)) | (1<<(14+16));   // Set LOW initially
 
     // Configure TIM8 pins (PC6, PC7, PC8, PC9) - AF3
@@ -128,14 +128,14 @@ static void PWM_ConfigureGPIO(void)
     GPIOC->AFR[0] |= (3<<(6*4)) | (3<<(7*4));  // AF3
     GPIOC->AFR[1] &= ~((0xF<<((8-8)*4)) | (0xF<<((9-8)*4)));
     GPIOC->AFR[1] |= (3<<((8-8)*4)) | (3<<((9-8)*4));  // AF3
-    GPIOC->OSPEEDR |= (3<<(6*2)) | (3<<(7*2)) | (3<<(8*2)) | (3<<(9*2));
+    GPIOC->OSPEEDR &= ~((3<<(6*2)) | (3<<(7*2)) | (3<<(8*2)) | (3<<(9*2)));  // slew LOW: switching 500 Hz ke base TIP122
 
     // Configure PE6 as GPIO output for Motor Starter
     GPIOE->MODER &= ~(3<<(6*2));
     GPIOE->MODER |= (1<<(6*2));     // GPIO output mode
     GPIOE->OTYPER &= ~(1<<6);       // Push-pull output
     GPIOE->PUPDR &= ~(3<<(6*2));    // No pull-up, no pull-down
-    GPIOE->OSPEEDR |= (3<<(6*2));   // High speed
+    GPIOE->OSPEEDR &= ~((3<<(6*2)));  // slew LOW: switching 500 Hz ke base TIP122
     GPIOE->BSRR = (1<<(6+16));      // Set LOW initially (BR6)
 
     // Note: PB8 (Emergency Signal) configured in gpio.c via HAL_GPIO_Init()

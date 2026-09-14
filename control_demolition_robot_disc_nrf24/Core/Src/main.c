@@ -49,6 +49,9 @@
 /* USER CODE BEGIN PV */
 NRF24_ReceivedData_t nrf24_data;
 static char debug_buffer[256];
+
+/* 1 = HSE gagal start dan fallback HSI yang aktif (lihat SystemClock_Config) */
+volatile uint8_t clock_source_is_hsi = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,19 +65,100 @@ void Debug_Printf(const char* format, ...);
 /* USER CODE BEGIN 0 */
 
 /**
-  * @brief  Send debug message via USB CDC
+  * @brief  Paksa setiap output aktuator ke kondisi aman HANYA dengan tulisan
+  *         register langsung (tanpa HAL, tanpa variabel global) supaya bisa
+  *         dipanggil dari fault handler manapun, bahkan saat stack/heap sudah
+  *         korup atau semua IRQ mati.
+  *
+  *         - semua compare value PWM -> 0 (output low sepanjang satu periode)
+  *         - MOE TIM1/TIM8 di-clear -> output advanced timer putus SEKARANG,
+  *           tidak menunggu update event berikutnya
+  *         - PD12/PD14 (Tool 1/2), PB8 (relay emergency), PE6 (motor starter)
+  *           -> LOW
+  */
+void Failsafe_EmergencyOutputs(void)
+{
+    TIM1->CCR1 = 0; TIM1->CCR2 = 0; TIM1->CCR3 = 0; TIM1->CCR4 = 0;
+    TIM2->CCR1 = 0; TIM2->CCR2 = 0; TIM2->CCR3 = 0; TIM2->CCR4 = 0;
+    TIM3->CCR1 = 0; TIM3->CCR2 = 0; TIM3->CCR3 = 0; TIM3->CCR4 = 0;
+    TIM4->CCR1 = 0; TIM4->CCR2 = 0; TIM4->CCR3 = 0; TIM4->CCR4 = 0;
+    TIM8->CCR1 = 0; TIM8->CCR2 = 0; TIM8->CCR3 = 0; TIM8->CCR4 = 0;
+
+    /* Advanced timer: putus output seketika, bukan di update berikutnya */
+    TIM1->BDTR &= ~TIM_BDTR_MOE;
+    TIM8->BDTR &= ~TIM_BDTR_MOE;
+
+    GPIOD->BSRR = (1u << (12 + 16));  /* PD12 Tool 1          LOW */
+    GPIOD->BSRR = (1u << (14 + 16));  /* PD14 Tool 2          LOW */
+    GPIOB->BSRR = (1u << (8  + 16));  /* PB8  relay emergency LOW */
+    GPIOE->BSRR = (1u << (6  + 16));  /* PE6  motor starter   LOW */
+}
+
+/* Independent watchdog lewat register langsung (tidak butuh modul HAL IWDG).
+ * LSI/32 = ~1 kHz -> nilai reload kira-kira sama dengan timeout dalam ms.
+ * Kalau loop kontrol hang, MCU reset dan boot ulang ke Control_Init() (semua
+ * PWM 0%), bukan membiarkan hidrolik tetap ter-energize di duty terakhir.
+ * ponytail: 800 ms dipilih longgar karena satu transaksi SPI nyangkut memakan
+ * timeout HAL 100 ms. Perpendek setelah timeout SPI dirapikan di Fase 2. */
+#define IWDG_TIMEOUT_MS 800u
+
+static void Failsafe_IWDG_Start(void)
+{
+    /* Bekukan IWDG saat core dihentikan debugger, kalau tidak setiap
+     * breakpoint berakhir dengan watchdog reset. Tidak berefek di lapangan. */
+    DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+
+    IWDG->KR  = 0x5555u;                      /* buka akses PR/RLR */
+    IWDG->PR  = 3u;                           /* LSI / 32 -> ~1 kHz */
+    IWDG->RLR = (IWDG_TIMEOUT_MS > 4095u) ? 4095u : IWDG_TIMEOUT_MS;
+    IWDG->KR  = 0xAAAAu;                      /* muat nilai reload */
+    IWDG->KR  = 0xCCCCu;                      /* start watchdog    */
+}
+
+static inline void Failsafe_IWDG_Refresh(void)
+{
+    IWDG->KR = 0xAAAAu;
+}
+
+/* Kirim ke CDC, tunggu endpoint bebas TAPI dengan batas waktu.
+ *
+ * Dulu tiap print membayar HAL_Delay(1..5) tanpa syarat, jadi blok diagnostik
+ * 1 Hz menahan loop ~7 ms dan ikut menahan ramp-down failsafe yang seharusnya
+ * melangkah tiap 10 ms. Menghapus delay begitu saja membuat print boot saling
+ * menimpa dan hilang (8 print beruntun, CDC hanya sanggup ~1 per ms).
+ *
+ * Menunggu TxState dengan batas waktu menutup dua-duanya: saat boot antrian
+ * benar-benar terkuras, sedangkan di loop (print 1x per detik) endpoint sudah
+ * pasti bebas sehingga biayanya nol. Kalau host USB tidak terpasang, biaya
+ * maksimalnya DEBUG_TX_TIMEOUT_MS sekali per detik - jauh di bawah IWDG. */
+#define DEBUG_TX_TIMEOUT_MS 5u
+
+static void Debug_TxBounded(const uint8_t *buf, uint16_t len)
+{
+    uint32_t start = HAL_GetTick();
+    while (CDC_Transmit_FS((uint8_t*)buf, len) == USBD_BUSY)
+    {
+        if ((HAL_GetTick() - start) >= DEBUG_TX_TIMEOUT_MS)
+        {
+            return;  // buang pesannya, jangan pernah menahan loop kontrol
+        }
+    }
+}
+
+/**
+  * @brief  Send debug message via USB CDC (best-effort, batas waktu)
   * @param  msg: Null-terminated string to send
   * @retval None
   */
 void Debug_Print(const char* msg)
 {
     if (msg == NULL) return;
-    CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
-    HAL_Delay(5);  // Allow USB to process
+    Debug_TxBounded((const uint8_t*)msg, strlen(msg));
 }
 
 /**
-  * @brief  Send formatted debug message via USB CDC (like printf)
+  * @brief  Send formatted debug message via USB CDC (printf-style,
+  *         best-effort, batas waktu - lihat Debug_Print)
   * @param  format: Format string (printf-style)
   * @param  ...: Variable arguments
   * @retval None
@@ -85,8 +169,7 @@ void Debug_Printf(const char* format, ...)
     va_start(args, format);
     vsnprintf(debug_buffer, sizeof(debug_buffer), format, args);
     va_end(args);
-    CDC_Transmit_FS((uint8_t*)debug_buffer, strlen(debug_buffer));
-    HAL_Delay(1);  // Minimal USB processing time
+    Debug_TxBounded((const uint8_t*)debug_buffer, strlen(debug_buffer));
 }
 
 /* USER CODE END 0 */
@@ -184,6 +267,9 @@ int main(void)
   Debug_Printf("  NRF24 Receiver Started (USB CDC)\r\n");
   Debug_Printf("  STM32F407VGT6 - SPI2\r\n");
   Debug_Printf("  CE: PE4 | CSN: PE5\r\n");
+  Debug_Printf("  Clock: %lu MHz (%s)\r\n",
+               (unsigned long)(HAL_RCC_GetSysClockFreq() / 1000000u),
+               clock_source_is_hsi ? "HSI fallback - HSE GAGAL" : "HSE");
   Debug_Printf("========================================\r\n\r\n");
 
   // RAW SPI2 TEST: Manual read of NRF24 STATUS register (0x07)
@@ -264,8 +350,15 @@ int main(void)
 
   Debug_Printf("Control system initialized - Ready!\r\n\r\n");
 
-  // Initialize safety timeout - give transmitter time to start (1 second grace period)
+  // Initialize safety timeout - give transmitter time to start
+  // (COMM_TIMEOUT_MS = 500 ms, bukan 1 detik seperti komentar lama)
   last_data_received_time = HAL_GetTick();
+
+  // Watchdog dinyalakan SETELAH semua init yang blocking (tunggu USB 2 detik,
+  // probe SPI, konfigurasi NRF24) selesai. Mulai dari sini loop wajib terus
+  // me-refresh-nya atau MCU reset - dan reset berarti masuk lagi ke
+  // Control_Init() dengan seluruh output PWM di 0%.
+  Failsafe_IWDG_Start();
 
   /* USER CODE END 2 */
 
@@ -276,6 +369,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    // Beri makan watchdog - harus tetap jadi hal pertama yang dikerjakan loop
+    Failsafe_IWDG_Refresh();
 
     // ========================================================================
     // COMMUNICATION TIMEOUT SAFETY WATCHDOG
@@ -510,6 +606,15 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
+  /* Coba HSE dulu (8 MHz) -> PLL -> 168 MHz. Saat cold power-on sumber 8 MHz
+   * bisa telat (ramp VDD lambat / MCO ST-LINK belum jalan), jadi satu kali
+   * percobaan gagal dan board menggantung di Error_Handler sampai tombol reset
+   * ditekan. Ulangi beberapa kali sambil mematikan-menyalakan HSE - persis
+   * seperti yang sudah dilakukan control_demolition_robot (commit 1aa14de);
+   * perbaikan itu tidak pernah mendarat di varian disc_nrf24 ini. */
+  HAL_StatusTypeDef status = HAL_ERROR;
+  const uint8_t HSE_MAX_ATTEMPTS = 5;
+
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -518,9 +623,40 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 7;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  for (uint8_t attempt = 0; attempt < HSE_MAX_ATTEMPTS; attempt++)
   {
-    Error_Handler();
+    status = HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    if (status == HAL_OK)
+    {
+      break;
+    }
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+    HAL_Delay(50);  /* SysTick masih jalan di HSI di sini, HAL_Delay valid */
+  }
+
+  /* Fallback ke HSI (16 MHz) kalau HSE tidak pernah start. PLL disetel ulang
+   * supaya SYSCLK tetap 168 MHz (VCO_in = HSI/16 = 1 MHz, sama dengan HSE/8):
+   * bit timing CAN, clock timer dan frekuensi PWM semuanya tidak berubah.
+   * Catatan: toleransi HSI ~1% melanggar spesifikasi USB, jadi USB CDC debug
+   * bisa tidak enumerate di mode ini - kontrol hidrolik tetap jalan. */
+  if (status != HAL_OK)
+  {
+    clock_source_is_hsi = 1;
+
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLM = 16;
+    RCC_OscInitStruct.PLL.PLLN = 336;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+    RCC_OscInitStruct.PLL.PLLQ = 7;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -550,9 +686,21 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  Failsafe_EmergencyOutputs();  /* hentikan hidrolik SEBELUM mematikan IRQ */
+
+  /* Error_Handler bisa tercapai dari MX_*_Init, yaitu SEBELUM watchdog
+   * dinyalakan di akhir init. Nyalakan di sini juga supaya jalur ini selalu
+   * berakhir reset, bukan brick diam tanpa indikasi seperti versi lama.
+   * Aman dipanggil dua kali: IWDG sekali start tidak bisa dimatikan. */
+  Failsafe_IWDG_Start();
+
   __disable_irq();
   while (1)
   {
+    /* IRQ mati, jadi IWDG tidak akan di-refresh: MCU reset dalam
+     * IWDG_TIMEOUT_MS dan boot ulang ke Control_Init() (semua PWM 0%).
+     * Kalau penyebabnya permanen (mis. HSE mati), board jadi reset berulang -
+     * gejala yang terlihat, bukan mati diam. */
   }
   /* USER CODE END Error_Handler_Debug */
 }
