@@ -177,9 +177,26 @@ int main(void)
   uint8_t link_was_up = 1;   // untuk mendeteksi TEPI link hidup -> mati
 
   #define SLEEP_TRANSITION_SPEED 10  // 10 steps transition
-  #define S1_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (exit SLEEP)
-  #define S1_2_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (calibration)
-  #define S2_1_HOLD_REQUIRED 20      // ~20 cycles = ~0.1 second hold required (start MOTOR)
+  // Hold counter dihitung per TICK WAKTU, bukan per iterasi loop.
+  //
+  // Dulu ketiganya dinaikkan sekali per iterasi while(1) dengan komentar
+  // "~20 cycles = ~0.1 second". Loop ini free-running: periodenya berayun dari
+  // beberapa mikrodetik (radio tidak ready, cabang TX tidak mengerjakan apa-apa)
+  // sampai ~25 ms (saat OLED redraw, blit 1025 byte I2C blocking). Jadi 20
+  // iterasi bisa selesai di bawah 1 ms - satu bounce kontak pada S2_1 langsung
+  // meng-arm motor - atau makan 0,5 detik. Tidak pernah 0,1 detik.
+  //
+  // 20 langkah x 5 ms = 100 ms, sesuai maksud angka aslinya, dan sekarang
+  // benar-benar 100 ms berapa pun kecepatan loop. Nilai 20 dipertahankan
+  // karena OLED memakai counter ini sebagai progress bar.
+  #define HOLD_TICK_MS 5u
+  #define S1_1_HOLD_REQUIRED 20      // 20 x 5 ms = 100 ms hold (exit SLEEP)
+  #define S1_2_HOLD_REQUIRED 20      // 20 x 5 ms = 100 ms hold (calibration)
+  #define S2_1_HOLD_REQUIRED 20      // 20 x 5 ms = 100 ms hold (start MOTOR)
+
+  uint32_t s1_1_hold_tick = 0;       // stempel waktu kenaikan terakhir
+  uint32_t s1_2_hold_tick = 0;
+  uint32_t s2_1_hold_tick = 0;
 
   // Motor starter variables
   uint8_t motor_active = 0;        // Motor starter state (0=OFF, 1=ON)
@@ -354,8 +371,16 @@ int main(void)
 
         if (last_s0_state == 0)
         {
-            OLED_ShowSplashScreen();
-            // No HAL_Delay here - blocking would freeze emergency response
+            // JANGAN panggil OLED_ShowSplashScreen() di sini: fungsi itu
+            // blocking 2000 ms (3x HAL_Delay di oled.c), jadi nol paket
+            // terkirim selama 2 detik tepat saat operator baru lepas dari
+            // emergency stop. Watchdog 500 ms di control board pasti fire dan
+            // operator harus re-arm ulang tanpa sebab. Komentar lama di baris
+            // ini justru berbunyi "No HAL_Delay here - blocking would freeze
+            // emergency response", menyangkal baris di atasnya.
+            // Tidak perlu flag redraw: sleep_mode_active = 1 di bawah berbeda
+            // dari last_sleep_state, jadi blok refresh OLED sudah menggambar
+            // ulang layar SLEEP di iterasi berikutnya.
             last_s0_state = 1;
             sleep_mode_active = 1;
             sleep_transition_steps = 0;
@@ -411,7 +436,11 @@ int main(void)
             // S1_2 = Joystick Calibration (in SLEEP mode only, hold to calibrate, once only)
             if (!calibration_done && tx_data.switches.s1_2 == 1)
             {
-                s1_2_hold_counter++;
+                if ((HAL_GetTick() - s1_2_hold_tick) >= HOLD_TICK_MS)
+                {
+                    s1_2_hold_tick = HAL_GetTick();
+                    s1_2_hold_counter++;
+                }
                 if (s1_2_hold_counter >= S1_2_HOLD_REQUIRED)
                 {
                     Joystick_Calibrate();
@@ -426,7 +455,11 @@ int main(void)
 
             if (tx_data.switches.s1_1 == 1)
             {
-                s1_1_hold_counter++;
+                if ((HAL_GetTick() - s1_1_hold_tick) >= HOLD_TICK_MS)
+                {
+                    s1_1_hold_tick = HAL_GetTick();
+                    s1_1_hold_counter++;
+                }
                 if (s1_1_hold_counter >= S1_1_HOLD_REQUIRED)
                 {
                     sleep_mode_active = 0;
@@ -507,7 +540,11 @@ int main(void)
 
         if (tx_data.switches.s2_1 == 1)
         {
-            s2_1_hold_counter++;
+            if ((HAL_GetTick() - s2_1_hold_tick) >= HOLD_TICK_MS)
+            {
+                s2_1_hold_tick = HAL_GetTick();
+                s2_1_hold_counter++;
+            }
             if (s2_1_hold_counter >= S2_1_HOLD_REQUIRED)
             {
                 motor_active = 1;
@@ -544,6 +581,18 @@ int main(void)
             can_mode = 1;
         }
 
+        // Bukti link HIDUP di mode CAN adalah heartbeat 0x702 dari control
+        // board, BUKAN "mailbox menerima frame".
+        //
+        // Dulu last_tx_ok_ms distempel saat CtrlCAN_Send() berhasil, padahal
+        // itu cuma berarti frame masuk ke mailbox lokal - dan can.c menyetel
+        // AutoRetransmission = DISABLE, jadi frame yang tidak di-ACK siapa pun
+        // langsung dibuang diam-diam. Akibatnya link_up permanen true di mode
+        // CAN dan tepi link-hidup->mati (yang menolkan motor_active) tidak
+        // pernah bisa fire. CtrlCAN_IsLinkUp() sudah memeriksa heartbeat dalam
+        // 300 ms terakhir, jadi ini bukti end-to-end yang sesungguhnya.
+        last_tx_ok_ms = HAL_GetTick();
+
         // Throttle: the loop is free-running, and at 500 kbps an unthrottled
         // loop would saturate the bus. 20 ms = 50 Hz, faster than the 50 ms
         // TPDO rate the CANopen bridge uses.
@@ -554,7 +603,6 @@ int main(void)
             if (CtrlCAN_Send(Var_GetBinaryData()))
             {
                 tx_ok_count++;
-                last_tx_ok_ms = HAL_GetTick();
                 HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
             }
             else

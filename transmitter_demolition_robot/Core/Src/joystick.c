@@ -57,7 +57,9 @@
 #define BATTERY_UPDATE_INTERVAL_MS  2000U  // displayed value updates max 1x per 2 s
 
 /* DMA Buffer - Filled automatically by DMA */
-uint16_t adc_buffer[ADC_CHANNELS] = {0};
+/* volatile: ditulis oleh hardware DMA, dibaca oleh kode C. Tanpa ini, di -O2
+ * compiler boleh meng-cache atau mengangkat pembacaannya keluar loop. */
+volatile uint16_t adc_buffer[ADC_CHANNELS] = {0};
 
 /* Calibration center values (raw 8-bit at neutral position) */
 int8_t joy_cal_offset[4] = {0, 0, 0, 0};  // Offset from 127 per axis [LX, LY, RY, RX]

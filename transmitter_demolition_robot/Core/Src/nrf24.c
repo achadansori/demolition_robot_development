@@ -372,10 +372,14 @@ bool NRF24_SendBinary(const uint8_t* data, uint16_t size)
     NRF24_CE_LOW();
 
     // Wait for transmission complete (busy-wait, no HAL_Delay)
-    uint32_t timeout = HAL_GetTick() + 5;
+    // Selisih unsigned, bukan perbandingan absolut: bentuk lama
+    // (tick + 5, lalu `HAL_GetTick() < timeout`) gagal saat tick wrap di
+    // 49,7 hari - timeout jadi nilai kecil dan loop langsung keluar tanpa
+    // pernah menunggu ACK, sehingga setiap paket dihitung gagal.
+    uint32_t start = HAL_GetTick();
     uint8_t status;
 
-    while (HAL_GetTick() < timeout)
+    while ((HAL_GetTick() - start) < 5u)
     {
         status = NRF24_ReadRegister(NRF24_REG_STATUS);
 
