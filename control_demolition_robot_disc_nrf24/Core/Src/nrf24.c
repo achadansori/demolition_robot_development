@@ -9,6 +9,18 @@
 #include "nrf24.h"
 #include <string.h>
 
+/* Batas waktu tiap transaksi SPI.
+ *
+ * Dulu 100 ms di SEMUA transaksi. Transfer terpanjang di driver ini cuma 8 byte
+ * di 2,625 MHz = ~25 us, jadi 100 ms itu ~4000x lebih longgar dari yang perlu -
+ * dan artinya satu SPI nyangkut (radio tidak diberi daya, MISO korslet)
+ * membekukan loop kontrol 100 ms per transaksi. Satu pass diagnostik 5 register
+ * = sampai 500 ms, sementara ramp-down failsafe seharusnya melangkah tiap 10 ms.
+ *
+ * ponytail: 5 ms masih ~200x margin. Kalau clock SPI nanti diturunkan drastis
+ * atau transfer diperpanjang, naikkan angka ini - jangan kembalikan ke 100. */
+#define NRF24_SPI_TIMEOUT_MS 5u
+
 /* Private variables ---------------------------------------------------------*/
 static SPI_HandleTypeDef *nrf24_hspi;
 static GPIO_TypeDef *nrf24_ce_port;
@@ -72,8 +84,8 @@ static uint8_t NRF24_WriteRegister(uint8_t reg, uint8_t value)
     uint8_t cmd = NRF24_CMD_W_REGISTER | (reg & 0x1F);
 
     NRF24_CSN_LOW();
-    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, 100);
-    HAL_SPI_Transmit(nrf24_hspi, &value, 1, 100);
+    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, NRF24_SPI_TIMEOUT_MS);
+    HAL_SPI_Transmit(nrf24_hspi, &value, 1, NRF24_SPI_TIMEOUT_MS);
     NRF24_CSN_HIGH();
 
     return status;
@@ -88,8 +100,8 @@ static uint8_t NRF24_ReadRegister(uint8_t reg)
     uint8_t cmd = NRF24_CMD_R_REGISTER | (reg & 0x1F);
 
     NRF24_CSN_LOW();
-    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, 100);
-    HAL_SPI_Receive(nrf24_hspi, &value, 1, 100);
+    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, NRF24_SPI_TIMEOUT_MS);
+    HAL_SPI_Receive(nrf24_hspi, &value, 1, NRF24_SPI_TIMEOUT_MS);
     NRF24_CSN_HIGH();
 
     return value;
@@ -104,8 +116,8 @@ static void NRF24_WriteRegisterMulti(uint8_t reg, uint8_t *data, uint8_t length)
     uint8_t cmd = NRF24_CMD_W_REGISTER | (reg & 0x1F);
 
     NRF24_CSN_LOW();
-    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, 100);
-    HAL_SPI_Transmit(nrf24_hspi, data, length, 100);
+    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, NRF24_SPI_TIMEOUT_MS);
+    HAL_SPI_Transmit(nrf24_hspi, data, length, NRF24_SPI_TIMEOUT_MS);
     NRF24_CSN_HIGH();
 }
 
@@ -118,8 +130,8 @@ static void NRF24_ReadRegisterMulti(uint8_t reg, uint8_t *data, uint8_t length)
     uint8_t cmd = NRF24_CMD_R_REGISTER | (reg & 0x1F);
 
     NRF24_CSN_LOW();
-    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, 100);
-    HAL_SPI_Receive(nrf24_hspi, data, length, 100);
+    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, NRF24_SPI_TIMEOUT_MS);
+    HAL_SPI_Receive(nrf24_hspi, data, length, NRF24_SPI_TIMEOUT_MS);
     NRF24_CSN_HIGH();
 }
 
@@ -131,7 +143,7 @@ static uint8_t NRF24_SendCommand(uint8_t cmd)
     uint8_t status;
 
     NRF24_CSN_LOW();
-    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, 100);
+    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, NRF24_SPI_TIMEOUT_MS);
     NRF24_CSN_HIGH();
 
     return status;
@@ -192,7 +204,9 @@ bool NRF24_Configure(void)
     // Set RX payload size: 8 bytes
     NRF24_WriteRegister(NRF24_REG_RX_PW_P0, 8);
 
-    // No retransmit (auto-ack disabled)
+    // SETUP_RETR = 0: sisi RX tidak pernah melakukan retransmit sendiri.
+    // (Auto-ACK JUSTRU aktif - lihat EN_AA di atas. Komentar lama di sini
+    // menulis "auto-ack disabled", bertentangan dengan baris EN_AA=0x01.)
     NRF24_WriteRegister(NRF24_REG_SETUP_RETR, 0x00);
 
     // Set RX address pipe 0 (must match TX address)
@@ -276,23 +290,46 @@ bool NRF24_IsDataAvailable(void)
 bool NRF24_GetData(NRF24_ReceivedData_t *data)
 {
     uint8_t payload[8];
-    uint8_t status;
-    uint8_t cmd = NRF24_CMD_R_RX_PAYLOAD;
+    uint8_t got = 0;
 
-    // Read payload from RX FIFO
-    NRF24_CSN_LOW();
-    HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, 100);
-    HAL_SPI_Receive(nrf24_hspi, payload, 8, 100);
-    NRF24_CSN_HIGH();
+    if (data == NULL) return false;
 
-    // Clear RX_DR flag after reading
+    // Kuras FIFO dan pakai paket TERBARU.
+    //
+    // Versi lama membaca satu payload lalu FLUSH_RX, jadi sampai 2 paket yang
+    // lebih baru di FIFO 3-dalam ikut terbuang setiap kali loop sempat tertahan.
+    // Versi lama juga selalu `return true`, sehingga guard di main.c
+    // (`IsDataAvailable() && GetData()`) tidak berarti apa-apa: payload gagal
+    // baca (radio brownout, SPI mati) diterima sebagai input kontrol yang sah -
+    // dan payload all-zero berarti joystick 0/0/0/0, yaitu defleksi penuh.
+    for (uint8_t guard = 0; guard < 3; guard++)   // FIFO NRF24 dalamnya 3
+    {
+        uint8_t fifo = NRF24_ReadRegister(NRF24_REG_FIFO_STATUS);
+
+        // 0x00/0xFF = radio tidak menjawab di SPI, bukan "FIFO kosong"
+        if (fifo == 0xFF) return false;
+        if (fifo & NRF24_FIFO_RX_EMPTY) break;
+
+        uint8_t cmd = NRF24_CMD_R_RX_PAYLOAD;
+        uint8_t status;
+
+        NRF24_CSN_LOW();
+        HAL_StatusTypeDef s1 = HAL_SPI_TransmitReceive(nrf24_hspi, &cmd, &status, 1, NRF24_SPI_TIMEOUT_MS);
+        HAL_StatusTypeDef s2 = HAL_SPI_Receive(nrf24_hspi, payload, 8, NRF24_SPI_TIMEOUT_MS);
+        NRF24_CSN_HIGH();
+
+        if (s1 != HAL_OK || s2 != HAL_OK) return false;
+
+        got = 1;   // payload terakhir yang terbaca = yang paling baru
+    }
+
+    // Bersihkan RX_DR apa pun hasilnya, supaya flag basi tidak memicu
+    // pembacaan palsu di iterasi berikutnya.
     NRF24_WriteRegister(NRF24_REG_STATUS, NRF24_STATUS_RX_DR);
 
-    // Flush RX FIFO to prevent stale data on next read
-    NRF24_SendCommand(NRF24_CMD_FLUSH_RX);
+    if (!got) return false;   // RX_DR menyala tapi FIFO kosong = flag basi
 
     NRF24_DecodePayload(payload, data);
-
     return true;
 }
 

@@ -53,7 +53,11 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+/* Paksa semua output aktuator ke kondisi aman lewat akses register langsung,
+ * sehingga aman dipanggil dari fault handler manapun (tanpa HAL, tanpa global,
+ * tetap jalan walau stack/heap sudah korup). Implementasi di main.c, dipakai
+ * juga oleh fault handler Cortex-M di stm32f4xx_it.c. */
+void Failsafe_EmergencyOutputs(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

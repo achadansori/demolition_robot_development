@@ -109,9 +109,38 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         unlock_latch = 0;          // Emergency = kunci lagi, wajib unlock ulang
         return;  // Exit immediately - no further processing
     }
-    else
+    else if (motor_rearm_required == 0)
     {
         GPIOB->BSRR = (1<<8);      // BS8 = set PB8 to HIGH
+    }
+
+    // ========================================================================
+    // RE-ARM SETELAH SINYAL PUTUS
+    // ========================================================================
+    // Dicek SEBELUM mode/PWM (dulu setelahnya): begitu link putus, mesin tidak
+    // boleh hidup sendiri saat link kembali. Relay emergency (PB8), motor (PE6)
+    // dan SELURUH PWM ditahan sampai operator melepas lalu menekan lagi S2_1.
+    if (motor_rearm_required)
+    {
+        if (lora_data->s2_1 == 0)
+        {
+            s2_1_released = 1;         // tombol dilepas
+        }
+        else if (s2_1_released)
+        {
+            motor_rearm_required = 0;  // ditekan lagi = start ulang, boleh arm
+        }
+
+        if (motor_rearm_required)
+        {
+            GPIOB->BSRR = (1<<(8+16)); // BR8 = relay emergency tetap drop
+            PWM_StopAll();
+            GPIOE->BSRR = (1<<(6+16)); // BR6 = tahan PE6 LOW sampai start ulang
+            GPIO_SetTool1(0);
+            return;
+        }
+
+        GPIOB->BSRR = (1<<8);          // re-arm selesai: relay boleh naik lagi
     }
 
     // ========================================================================
@@ -150,6 +179,61 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     bool mode_upper = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 0);
     bool mode_dual  = (lora_data->s5_1 == 1) && (lora_data->s5_2 == 0);
     bool mode_lower = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 1);
+
+    // ========================================================================
+    // MODE-SWITCH NEUTRAL INTERLOCK
+    // ========================================================================
+    // Membalik S5 seketika me-remap joystick ke aktuator LAIN. Kalau operator
+    // pindah mode sementara stik masih terdefleksi, aktuator yang tidak diduga
+    // langsung bergerak sebesar defleksi itu. Setelah tiap perubahan mode,
+    // tahan semua output proporsional di 0 sampai keempat sumbu kembali netral.
+    // Motor (PE6) tetap jalan - hanya gerakan yang di-gate, operator cukup
+    // melepas stik.
+    {
+        static uint8_t last_mode_bits = 0xFF;      // 0xFF = belum diinisialisasi
+        static uint8_t mode_switch_block = 0;
+
+        uint8_t mode_bits = (uint8_t)((lora_data->s5_1 << 1) | lora_data->s5_2);
+        if (last_mode_bits == 0xFF)
+        {
+            last_mode_bits = mode_bits;            // paket pertama: tidak diblok
+        }
+        else if (mode_bits != last_mode_bits)
+        {
+            last_mode_bits = mode_bits;
+            mode_switch_block = 1;
+        }
+
+        if (mode_switch_block)
+        {
+            // ponytail: toleransi netral tetap (+/-10). Kalau joystick TX
+            // drift setelah kalibrasi, longgarkan angka ini - jangan hapus cek.
+            #define MODE_SWITCH_NEUTRAL_TOL 10
+            bool sticks_neutral =
+                (lora_data->joy_left_x  >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_x  <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_y  >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_y  <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_x >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_x <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_y >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_y <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL);
+
+            if (sticks_neutral)
+            {
+                mode_switch_block = 0;             // stik dilepas: lanjut normal
+            }
+            else
+            {
+                PWM_StopAll();                     // ikut menolkan Tool 1 GPIO
+                if (lora_data->motor_active)
+                {
+                    GPIOE->BSRR = (1 << 6);        // motor starter tetap ON
+                }
+                return;
+            }
+        }
+    }
 
     // ========================================================================
     // MODE UPPER - EXCAVATOR CONTROLS
@@ -531,6 +615,15 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
         PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
         PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
     }
+    else
+    {
+        // s5_1 = 1 DAN s5_2 = 1: kombinasi yang tidak memetakan ke mode manapun.
+        // Tanpa cabang ini, Control_Update() selesai normal tanpa menyentuh PWM
+        // satu pun, sehingga SETIAP kanal menahan duty terakhirnya selamanya -
+        // satu bounce switch saat stik terdefleksi penuh mengunci mesin di
+        // defleksi penuh. Failsafe tidak menolong: paket tetap datang.
+        PWM_StopAll();
+    }
 
     // ========================================================================
     // PE6 (MOTOR STARTER) - GPIO CONTROL
@@ -542,24 +635,6 @@ void Control_Update(NRF24_ReceivedData_t *lora_data)
     //
     // Setelah sinyal putus, motor TIDAK boleh start sendiri: butuh transisi
     // 0→1 pada motor_active (S2_1 dimatikan lalu dinyalakan lagi di remote).
-
-    if (motor_rearm_required)
-    {
-        if (lora_data->s2_1 == 0)
-        {
-            s2_1_released = 1;         // tombol dilepas
-        }
-        else if (s2_1_released)
-        {
-            motor_rearm_required = 0;  // ditekan lagi = start ulang, boleh arm
-        }
-
-        if (motor_rearm_required)
-        {
-            GPIOE->BSRR = (1<<(6+16)); // BR6 = tahan PE6 LOW sampai start ulang
-            return;
-        }
-    }
 
     if (lora_data->motor_active == 1)
     {
