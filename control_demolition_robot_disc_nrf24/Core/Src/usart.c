@@ -80,9 +80,21 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    /* USART1 interrupt Init */
-    HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART1_IRQn);
+    /* USART1 interrupt Init - SENGAJA TIDAK DIAKTIFKAN.
+     *
+     * stm32f4xx_it.c tidak mendefinisikan USART1_IRQHandler, jadi vektornya
+     * jatuh ke Default_Handler yang isinya infinite loop. huart1 sendiri tidak
+     * pernah dipakai di project ini (lihat audit: usart.c mati), sehingga tidak
+     * ada sumber interupsi yang diaktifkan di CR1 dan perangkap ini belum
+     * pernah meledak - tapi ia terpasang di NVIC dan menunggu. Satu tulisan ke
+     * CR1 oleh siapa pun (atau regenerasi CubeMX yang menambah mode IT) langsung
+     * menggantung control board.
+     *
+     * Kalau USART1 nanti benar-benar dipakai: kembalikan dua baris ini DAN
+     * tambahkan USART1_IRQHandler di stm32f4xx_it.c.
+     */
+    /* HAL_NVIC_SetPriority(USART1_IRQn, 0, 0); */
+    /* HAL_NVIC_EnableIRQ(USART1_IRQn); */
   /* USER CODE BEGIN USART1_MspInit 1 */
 
   /* USER CODE END USART1_MspInit 1 */
