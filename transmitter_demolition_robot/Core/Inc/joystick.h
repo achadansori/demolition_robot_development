@@ -42,7 +42,7 @@ extern "C" {
 /* Exported macro ------------------------------------------------------------*/
 
 /* Exported variables --------------------------------------------------------*/
-extern uint16_t adc_buffer[ADC_CHANNELS];
+extern volatile uint16_t adc_buffer[ADC_CHANNELS];
 extern int8_t joy_cal_offset[4];  // Calibration offset per axis (LX, LY, RY, RX)
 
 /* Exported functions prototypes ---------------------------------------------*/
