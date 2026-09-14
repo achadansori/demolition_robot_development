@@ -1033,8 +1033,14 @@ static void OLED_WriteCommand(uint8_t cmd)
   */
 static void OLED_WriteData(uint8_t *data, uint16_t len)
 {
-    uint8_t buffer[len + 1];
-    buffer[0] = OLED_DATA;
-    memcpy(&buffer[1], data, len);
-    HAL_I2C_Master_Transmit(oled_i2c, OLED_I2C_ADDR, buffer, len + 1, OLED_TIMEOUT);
+    // Control byte 0x40 dikirim sebagai "alamat memori", data menyusul langsung.
+    //
+    // Versi lama membuat VLA `uint8_t buffer[len + 1]` di stack lalu memcpy
+    // seluruh framebuffer ke sana tiap frame. Untuk OLED_Update() len = 1024,
+    // jadi 1025 byte VLA - sementara _Min_Stack_Size di STM32F407VGTX_FLASH.ld
+    // cuma 0x400 (1 KB). Selamat hanya karena stack sesungguhnya dimulai dari
+    // puncak RAM 128 KB, bukan karena ukurannya benar. Mem_Write menghapus VLA
+    // dan memcpy 1 KB per frame sekaligus.
+    HAL_I2C_Mem_Write(oled_i2c, OLED_I2C_ADDR, OLED_DATA, I2C_MEMADD_SIZE_8BIT,
+                      data, len, OLED_TIMEOUT);
 }

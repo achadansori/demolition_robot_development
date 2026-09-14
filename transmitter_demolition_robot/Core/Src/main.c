@@ -75,6 +75,38 @@ void Debug_Printf(const char* format, ...);
 /* USER CODE BEGIN 0 */
 volatile uint8_t s0_emergency_flag = 0;  // Set by EXTI0 ISR when S0 = 0
 volatile uint8_t clock_source_is_hsi = 0;  // 1 if HSE failed and HSI fallback is active
+
+/* Independent watchdog lewat register langsung (modul HAL IWDG tidak aktif).
+ * LSI/32 = ~1 kHz, jadi nilai reload kira-kira sama dengan timeout dalam ms.
+ *
+ * Transmitter yang hang memang berakhir aman lewat timeout 500 ms di control
+ * board - TAPI hanya kalau hang-nya berhenti mengirim. Hang SETELAH paket bagus
+ * terkirim dengan stik terdefleksi hanya tertangkap oleh timer robot, dan
+ * operator tidak punya cara memulihkan remote selain cabut daya. Reset jauh
+ * lebih baik: boot masuk SLEEP dengan motor_active = 0.
+ *
+ * ponytail: 800 ms disamakan dengan control board. Blocking terpanjang di loop
+ * ini adalah blit OLED ~23 ms, jadi marginnya besar.
+ */
+#define IWDG_TIMEOUT_MS 800u
+
+static void Failsafe_IWDG_Start(void)
+{
+    /* Bekukan IWDG saat core dihentikan debugger, kalau tidak tiap breakpoint
+     * berakhir dengan watchdog reset. Tidak berefek di lapangan. */
+    DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+
+    IWDG->KR  = 0x5555u;                      /* buka akses PR/RLR */
+    IWDG->PR  = 3u;                           /* LSI / 32 -> ~1 kHz */
+    IWDG->RLR = (IWDG_TIMEOUT_MS > 4095u) ? 4095u : IWDG_TIMEOUT_MS;
+    IWDG->KR  = 0xAAAAu;                      /* muat nilai reload */
+    IWDG->KR  = 0xCCCCu;                      /* start watchdog    */
+}
+
+static inline void Failsafe_IWDG_Refresh(void)
+{
+    IWDG->KR = 0xAAAAu;
+}
 /* USER CODE END 0 */
 
 /**
@@ -278,6 +310,10 @@ int main(void)
   Debug_Printf("Entering main loop...\r\n");
   HAL_Delay(10);
 
+  /* Watchdog dinyalakan SETELAH semua init blocking (tunggu USB 2 detik,
+   * splash OLED 2 detik, gerbang tunggu S0=1) selesai. */
+  Failsafe_IWDG_Start();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -287,6 +323,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // Beri makan watchdog - harus tetap jadi hal pertama yang dikerjakan loop
+    Failsafe_IWDG_Refresh();
+
     // Update semua data sensor
     Var_Update();
 
@@ -299,6 +338,11 @@ int main(void)
         Debug_PrintTxData(&tx_data);  // Print RAW values here, before override
         Debug_Printf("  NRF: ST=0x%02X | OK=%lu FAIL=%lu NRDY=%lu | LQ=%u%%\r\n",
             NRF24_GetStatus(), tx_ok_count, tx_fail_count, tx_not_ready, NRF24_GetLinkQuality());
+        // ADC=FROZEN berarti joystick sedang dinetralkan paksa, bukan operator
+        // yang melepas stik. RST = berapa kali ADC+DMA harus dijalankan ulang.
+        Debug_Printf("  ADC: %s | RST=%lu\r\n",
+            Joystick_IsHealthy() ? "ok" : "FROZEN",
+            (unsigned long)Joystick_GetDmaRestarts());
     }
 
     // ========================================================================
@@ -313,21 +357,26 @@ int main(void)
         // First emergency after boot: just clear (avoid any text-render error
         // before OLED is fully exercised). Subsequent emergencies show text.
         // Re-draw periodically (every ~20 loops) so an I2C glitch self-recovers.
-        static uint8_t emergency_redraw_counter = 0;
-        static uint8_t emergency_first_event = 1;
-        if (last_s0_state != 0 || ++emergency_redraw_counter >= 20)
+        // Redraw layar emergency, dibatasi WAKTU bukan jumlah iterasi. Counter
+        // lama (>= 20 iterasi) di loop free-running berarti redraw tiap ~30 ms,
+        // yaitu ~45% waktu dihabiskan di transfer I2C blocking justru saat
+        // respons emergency paling dibutuhkan.
+        static uint32_t emergency_redraw_ms = 0;
+        if (last_s0_state != 0 || (HAL_GetTick() - emergency_redraw_ms) >= 250u)
         {
-            emergency_redraw_counter = 0;
+            emergency_redraw_ms = HAL_GetTick();
             OLED_Clear();
-            if (!emergency_first_event)
-            {
-                OLED_SetCursor(8, 16);
-                OLED_WriteString("EMERGENCY", FONT_SIZE_NORMAL);
-                OLED_SetCursor(32, 36);
-                OLED_WriteString("STOP", FONT_SIZE_LARGE);
-            }
+            // Selalu gambar teksnya. Versi lama melewati blok ini pada event
+            // emergency PERTAMA setelah boot (emergency_first_event mulai dari
+            // 1), jadi operator cuma melihat LAYAR KOSONG + LED merah persis
+            // saat paling butuh konfirmasi. Alasan di komentar lama - menghindari
+            // "text-render error sebelum OLED benar-benar dipakai" - menambal
+            // bug yang tidak pernah ditemukan dengan layar keselamatan kosong.
+            OLED_SetCursor(8, 16);
+            OLED_WriteString("EMERGENCY", FONT_SIZE_NORMAL);
+            OLED_SetCursor(32, 36);
+            OLED_WriteString("STOP", FONT_SIZE_LARGE);
             OLED_Update();
-            emergency_first_event = 0;
         }
 
         // Override all controls to SAFE values for emergency
@@ -818,9 +867,21 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+
+  /* Nyalakan watchdog di sini juga. Error_Handler bisa tercapai dari
+   * MX_ADC1_Init / MX_SPI2_Init / MX_I2C3_Init / MX_CAN1_Init /
+   * MX_USART3_UART_Init - semuanya SEBELUM watchdog dinyalakan di akhir init -
+   * dan versi lama berakhir brick permanen tanpa indikasi apa pun, remote mati
+   * total sampai dicabut dayanya. Sekarang board reset dan boot ulang ke SLEEP.
+   * Aman dipanggil dua kali: IWDG sekali start tidak bisa dimatikan. */
+  Failsafe_IWDG_Start();
+
   __disable_irq();
   while (1)
   {
+    /* IRQ mati, jadi IWDG tidak akan di-refresh: reset dalam IWDG_TIMEOUT_MS.
+     * Kalau penyebabnya permanen, remote jadi reset berulang - gejala yang
+     * terlihat operator, bukan mati diam. */
   }
   /* USER CODE END Error_Handler_Debug */
 }

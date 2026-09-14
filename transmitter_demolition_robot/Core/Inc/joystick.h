@@ -50,6 +50,8 @@ void Joystick_Init(void);
 void Joystick_Read(Joystick_Data_t* data);
 void Joystick_StartDMA(void);
 void Joystick_Calibrate(void);
+uint8_t Joystick_IsHealthy(void);      // 0 = ADC beku, data tidak dipercaya
+uint32_t Joystick_GetDmaRestarts(void);// diagnostik: jumlah restart ADC+DMA
 
 #ifdef __cplusplus
 }

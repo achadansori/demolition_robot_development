@@ -67,6 +67,156 @@ int8_t joy_cal_offset[4] = {0, 0, 0, 0};  // Offset from 127 per axis [LX, LY, R
 /* Private variables ---------------------------------------------------------*/
 static uint8_t dma_started = 0;
 
+/* 1 = konversi ADC tidak berjalan, isi adc_buffer TIDAK boleh dipercaya.
+ *
+ * Dulu HAL_ADC_Start_DMA() dipanggil sekali, return-nya dibuang, dan
+ * dma_started dikunci ke 1 selamanya. Kalau DMA batal di tengah jalan
+ * (overrun ADC adalah penyebab paling umum - OVR menghentikan stream),
+ * adc_buffer BEKU di nilai terakhirnya tanpa batas waktu dan tidak ada satu
+ * pun yang mendeteksinya: joystick macet diam-diam, dan kalau bekunya saat
+ * stik terdefleksi, robot terus bergerak sementara link terlihat sehat
+ * sempurna. Ini satu-satunya jalur yang bisa menggerakkan mesin tanpa gejala.
+ */
+static uint8_t dma_fault = 0;
+static uint32_t dma_restart_count = 0;
+
+/* Persentase baterai terakhir yang valid, dipakai saat ADC sedang fault
+ * supaya tampilan tidak melonjak ke 0%. */
+static uint8_t last_battery_percent = 0;
+
+/* ---------------------------------------------------------------------------
+ * Penyimpanan kalibrasi di flash (APPEND-ONLY)
+ *
+ * Dulu joy_cal_offset[] hanya ada di RAM: hilang tiap reset, jadi operator
+ * harus kalibrasi ulang tiap kali remote dinyalakan.
+ *
+ * Kenapa append-only dan bukan "hapus lalu tulis"? Sektor flash F407 di atas
+ * sektor 4 semuanya 128 KB, dan erase 128 KB makan tipikal 1 detik, maksimum
+ * 3 detik. IWDG kita 800 ms, jadi satu erase = watchdog reset di tengah
+ * penyimpanan. Flash hanya bisa mengubah bit 1 -> 0, jadi slot kosong bisa
+ * ditulisi tanpa erase: tiap kalibrasi mengisi slot 8 byte berikutnya.
+ * 128 KB / 8 = 16384 kali kalibrasi sebelum sektornya penuh - praktis tidak
+ * pernah tercapai, sehingga erase tidak pernah dijalankan.
+ *
+ * Urutan tulis: offsets DULU, magic BELAKANGAN. Kalau daya putus di tengah,
+ * slot itu tidak punya magic dan otomatis diabaikan - tidak ada record
+ * setengah jadi yang terbaca sebagai kalibrasi valid.
+ *
+ * ponytail: kalau sektornya benar-benar penuh, penyimpanan berhenti diam-diam
+ * dan kalibrasi kembali seperti dulu (hanya RAM). Kalau itu sampai terjadi,
+ * tambahkan erase sektor di jalur boot (di sana blocking 3 detik aman karena
+ * IWDG belum jalan).
+ * ------------------------------------------------------------------------ */
+#define CAL_FLASH_BASE     0x080E0000UL       /* sektor 11, 128 KB, di luar program (~67 KB) */
+#define CAL_FLASH_SIZE     (128U * 1024U)
+#define CAL_SLOT_SIZE      8U
+#define CAL_MAGIC          0xCA11B00BUL
+
+/**
+  * @brief  Alamat slot terpakai TERAKHIR, atau 0 kalau belum ada
+  */
+static uint32_t cal_find_last(void)
+{
+    uint32_t last = 0;
+
+    for (uint32_t a = CAL_FLASH_BASE; a < CAL_FLASH_BASE + CAL_FLASH_SIZE; a += CAL_SLOT_SIZE)
+    {
+        if (*(volatile uint32_t *)(a + 4) == CAL_MAGIC)
+        {
+            last = a;
+        }
+        else if (*(volatile uint32_t *)(a + 4) == 0xFFFFFFFFUL &&
+                 *(volatile uint32_t *)a       == 0xFFFFFFFFUL)
+        {
+            break;   /* slot kosong pertama: sisanya pasti kosong juga */
+        }
+    }
+    return last;
+}
+
+/**
+  * @brief  Muat kalibrasi tersimpan ke joy_cal_offset[] kalau ada
+  */
+static void cal_load(void)
+{
+    uint32_t slot = cal_find_last();
+    if (slot == 0) return;                    /* belum pernah dikalibrasi */
+
+    uint32_t packed = *(volatile uint32_t *)slot;
+    for (int i = 0; i < 4; i++)
+    {
+        joy_cal_offset[i] = (int8_t)((packed >> (i * 8)) & 0xFFU);
+    }
+}
+
+/**
+  * @brief  Simpan joy_cal_offset[] ke slot flash kosong berikutnya
+  */
+static void cal_save(void)
+{
+    /* Cari slot yang BENAR-BENAR kosong (kedua word masih 0xFFFFFFFF), bukan
+     * sekadar "sesudah yang terakhir valid". Slot yang tertulis separuh karena
+     * daya putus saat menyimpan tidak punya magic, dan menimpanya akan gagal:
+     * flash tidak bisa mengembalikan bit 0 menjadi 1. Dengan cara ini slot
+     * rusak itu cukup dilewati. */
+    uint32_t slot = 0;
+    for (uint32_t a = CAL_FLASH_BASE; a < CAL_FLASH_BASE + CAL_FLASH_SIZE; a += CAL_SLOT_SIZE)
+    {
+        if (*(volatile uint32_t *)a       == 0xFFFFFFFFUL &&
+            *(volatile uint32_t *)(a + 4) == 0xFFFFFFFFUL)
+        {
+            slot = a;
+            break;
+        }
+    }
+
+    if (slot == 0) return;   /* penuh - lihat catatan ponytail di atas */
+
+    uint32_t packed = 0;
+    for (int i = 0; i < 4; i++)
+    {
+        packed |= ((uint32_t)(uint8_t)joy_cal_offset[i]) << (i * 8);
+    }
+
+    if (HAL_FLASH_Unlock() != HAL_OK) return;
+
+    /* offsets dulu, magic terakhir - lihat catatan torn-write di atas */
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, slot, packed) == HAL_OK)
+    {
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, slot + 4, CAL_MAGIC);
+    }
+
+    HAL_FLASH_Lock();
+}
+
+/**
+  * @brief  Apakah konversi ADC benar-benar masih jalan?
+  * @note   Bit EN stream ikut ter-clear saat DMA batal, dan flag OVR menandai
+  *         overrun yang menghentikannya. Memeriksa "apakah nilainya berubah"
+  *         tidak bisa dipakai: stik yang benar-benar diam memang tidak berubah.
+  * @retval 1 kalau sehat
+  */
+static uint8_t dma_is_running(void)
+{
+    if (hadc1.DMA_Handle == NULL) return 0;
+    if (__HAL_ADC_GET_FLAG(&hadc1, ADC_FLAG_OVR)) return 0;
+
+    return ((hadc1.DMA_Handle->Instance->CR & DMA_SxCR_EN) != 0U) ? 1 : 0;
+}
+
+/**
+  * @brief  Hentikan, bersihkan, lalu jalankan ulang ADC+DMA
+  * @retval None
+  */
+static void dma_restart(void)
+{
+    HAL_ADC_Stop_DMA(&hadc1);
+    __HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_OVR);
+    dma_started = 0;
+    dma_restart_count++;
+    Joystick_StartDMA();
+}
+
 /**
   * @brief  Apply asymmetric calibration to joystick axis
   *         Maps raw value so that calibrated center = 127
@@ -190,6 +340,10 @@ static uint8_t apply_calibration(uint8_t raw8, int8_t offset)
   */
 void Joystick_Init(void)
 {
+    // Pulihkan kalibrasi tersimpan sebelum ADC jalan, supaya pembacaan pertama
+    // sudah terkalibrasi dan operator tidak perlu kalibrasi ulang tiap nyala.
+    cal_load();
+
     // Start ADC DMA
     Joystick_StartDMA();
 }
@@ -202,10 +356,36 @@ void Joystick_StartDMA(void)
 {
     if (!dma_started)
     {
-        // Start ADC with DMA (Circular mode - runs continuously)
-        HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_CHANNELS);
-        dma_started = 1;
+        // Start ADC with DMA (Circular mode - runs continuously).
+        // Return-nya DIPERIKSA: kalau gagal, dma_started tidak dikunci ke 1
+        // sehingga Joystick_Read() mencobanya lagi di iterasi berikutnya.
+        if (HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_CHANNELS) == HAL_OK)
+        {
+            dma_started = 1;
+            dma_fault = 0;
+        }
+        else
+        {
+            dma_fault = 1;
+        }
     }
+}
+
+/**
+  * @brief  Apakah pembacaan joystick boleh dipercaya?
+  * @retval 1 kalau ADC sehat, 0 kalau data beku / DMA sedang bermasalah
+  */
+uint8_t Joystick_IsHealthy(void)
+{
+    return (uint8_t)(!dma_fault);
+}
+
+/**
+  * @brief  Berapa kali ADC+DMA harus dijalankan ulang sejak boot (diagnostik)
+  */
+uint32_t Joystick_GetDmaRestarts(void)
+{
+    return dma_restart_count;
 }
 
 /**
@@ -215,10 +395,30 @@ void Joystick_StartDMA(void)
   */
 void Joystick_Read(Joystick_Data_t* data)
 {
-    // Make sure DMA is running
+    // Pastikan konversi ADC benar-benar jalan, bukan sekadar "pernah distart".
     if (!dma_started)
     {
         Joystick_StartDMA();
+    }
+    else if (!dma_is_running())
+    {
+        dma_fault = 1;
+        dma_restart();
+    }
+
+    // Data beku tidak boleh dikirim sebagai perintah. Netralkan keempat sumbu:
+    // robot berhenti, dan kalau DMA pulih di iterasi berikutnya pembacaan
+    // normal langsung kembali. Baterai dipertahankan di nilai terakhir supaya
+    // tampilan tidak melonjak ke 0%.
+    if (dma_fault)
+    {
+        data->left_x   = 127;
+        data->left_y   = 127;
+        data->right_x  = 127;
+        data->right_y  = 127;
+        data->battery_percent = last_battery_percent;
+        data->reserved = 0;
+        return;
     }
 
     // Read from DMA buffer and convert 12-bit to 8-bit
@@ -241,6 +441,7 @@ void Joystick_Read(Joystick_Data_t* data)
     data->right_y         = apply_calibration(median3_filter(2, raw_ry), joy_cal_offset[2]);
     data->right_x         = apply_calibration(median3_filter(3, raw_rx), joy_cal_offset[3]);
     data->battery_percent = calculate_battery_percent(adc_buffer[4]);  // PA0
+    last_battery_percent  = data->battery_percent;
     data->reserved        = 0;  // PA2 removed from scan
 }
 
@@ -252,16 +453,25 @@ void Joystick_Read(Joystick_Data_t* data)
   */
 void Joystick_Calibrate(void)
 {
-    // Read current raw 8-bit values at neutral position
+    // Jangan kalibrasi dari data beku.
+    if (dma_fault) return;
+
+    // Baca nilai raw 8-bit di posisi netral, LEWAT median filter.
+    //
+    // Versi lama membaca adc_buffer langsung, melewati median3_filter yang
+    // justru ada untuk menolak spike. Satu spike ADC tepat pada saat kalibrasi
+    // membiaskan sumbu itu secara permanen.
     uint8_t raw[4];
-    raw[0] = (uint8_t)(adc_buffer[0] >> 4);  // left_x
-    raw[1] = (uint8_t)(adc_buffer[1] >> 4);  // left_y
-    raw[2] = (uint8_t)(adc_buffer[2] >> 4);  // right_y
-    raw[3] = (uint8_t)(adc_buffer[3] >> 4);  // right_x
+    raw[0] = median3_filter(0, (uint8_t)(adc_buffer[0] >> 4));  // left_x
+    raw[1] = median3_filter(1, (uint8_t)(adc_buffer[1] >> 4));  // left_y
+    raw[2] = median3_filter(2, (uint8_t)(adc_buffer[2] >> 4));  // right_y
+    raw[3] = median3_filter(3, (uint8_t)(adc_buffer[3] >> 4));  // right_x
 
     // Calculate offset: how far hardware neutral is from 127
     for (int i = 0; i < 4; i++)
     {
         joy_cal_offset[i] = (int8_t)((int16_t)raw[i] - 127);
     }
+
+    cal_save();   // simpan ke flash supaya tidak hilang saat daya dimatikan
 }
