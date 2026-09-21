@@ -1,0 +1,774 @@
+/**
+  ******************************************************************************
+  * @file           : control.c
+  * @brief          : Demolition Robot Control Logic Implementation
+  ******************************************************************************
+  */
+
+/* Includes ------------------------------------------------------------------*/
+#include "control.h"
+#include "pwm.h"
+#include "main.h"
+#include <string.h>
+
+/* Private defines -----------------------------------------------------------*/
+#define JOYSTICK_CENTER     127     // Center position of joystick (0-255 range)
+#define JOYSTICK_DEADZONE   5       // Deadzone around center (reduced for wider range, smoother control)
+
+/* Smoothing parameters for solenoid control */
+#define PWM_RAMPING_ENABLED 0       // OFF - instant response (no delay)
+#define MAX_PWM_CHANGE_PER_CYCLE 10 // Not used when ramping OFF
+#define SMOOTH_CURVE_ENABLED 0      // OFF - linear mapping (no delay)
+
+/* Private variables ---------------------------------------------------------*/
+// Latch unlock: 1 = lock sudah dibuka, PWM solenoid boleh keluar tanpa start
+// motor. Di-set dari s1_1/unlocked/motor_active, direset hanya oleh EMERGENCY.
+static uint8_t unlock_latch = 0;
+
+// Wajib start ulang dari remote: di-set saat sinyal putus (safety mode).
+// motor_active di TX sifatnya self-holding (S2_1 tombol momentary), jadi
+// re-arm TIDAK boleh menunggu motor_active jadi 0 - dideteksi dari tombol
+// S2_1 mentah yang ikut terkirim tiap paket: harus dilepas lalu ditekan lagi.
+static uint8_t motor_rearm_required = 0;
+static uint8_t s2_1_released = 0;
+
+// PWM limits per output channel (min, max) - adjustable per solenoid
+typedef struct {
+    uint8_t min;  // Minimum PWM output (%)
+    uint8_t max;  // Maximum PWM output (%)
+} PWM_Limits_t;
+
+// PWM limits for each output - indexed by PWM channel enum
+// NOTE: Max values capped at 90% to prevent TIP122 deep saturation (stuck ON issue)
+// TIP122 Darlington transistors accumulate base charge at 100% duty cycle,
+// causing them to stay ON even when PWM returns to 0%. Limiting to 90% max
+// ensures proper switching and prevents the "stuck ON" problem.
+// KALIBRASI 250 DARI LAPANGAN - BELUM DIPASANG, SENGAJA.
+//
+// Nilai di bawah berasal dari project control_demolition_robot_250 pada commit
+// 3763030 (22 April 2026), dikalibrasi terhadap mesin 250 yang sebenarnya:
+//
+//   Cyl2 OUT {40,55}   Cyl2 IN {40,50}    Cyl3 OUT {42,65}   Cyl3 IN {42,60}
+//   Cyl4 OUT {42,60}   Cyl4 IN {42,60}    Tool1 {0,75}       Tool2 {0,60}
+//   Slew CW {35,45}    Slew CCW {35,45}
+//   Outrigger L/R UP & DOWN semuanya {30,85}
+//   Track R FWD {31,56}  Track R BWD {31,56}
+//   Track L FWD {38,63}  Track L BWD {51,76}
+//
+// JANGAN salin begitu saja. Sejak April peta kanal->pin sudah berubah DUA kali:
+//   f59d51e - membalik IN<->OUT, CW<->CCW, UP<->DOWN, FWD<->BWD
+//   6b0edb4 / 89b993a - remap kanal->pin menyeluruh (PWM_1 dulu TIM8_CH1/PC6,
+//                        sekarang TIM2_CH4/PA3)
+//
+// Jadi kanal logis yang sama belum tentu menggerakkan solenoid fisik yang sama.
+// Pasangan asimetris paling berbahaya kalau tertukar: Track Left (38/63 vs 51/76),
+// Cyl2 (55 vs 50), Cyl3 (65 vs 60). Verifikasi tiap kanal di bench - outrigger
+// terangkat, tanpa beban, pompa mati - baru isikan angkanya satu per satu.
+//
+// Sampai itu dilakukan tabel ini {0,100}: tanpa deadband dan tanpa cap.
+static PWM_Limits_t pwm_limits[20] = {
+    [PWM_1_BRAKE]                    = {0, 100},  // Brake (digital: 100% di UPPER, 0% di LOWER/DUAL)
+    [PWM_2_CYLINDER_1_ON]            = {0, 100},  // Katup ON Cylinder 1 (digital ON/OFF)
+    [PWM_3_CYLINDER_2_OUT]           = {0, 100},  // Cylinder 2 OUT
+    [PWM_4_CYLINDER_2_IN]            = {0, 100},  // Cylinder 2 IN
+    [PWM_5_CYLINDER_3_OUT]           = {0, 100},  // Cylinder 3 OUT (Bucket)
+    [PWM_6_CYLINDER_3_IN]            = {0, 100},  // Cylinder 3 IN (Bucket)
+    [PWM_7_CYLINDER_4_OUT]           = {0, 100},  // Cylinder 4 OUT
+    [PWM_8_CYLINDER_4_IN]            = {0, 100},  // Cylinder 4 IN
+    [PWM_9_TOOL_1]                   = {0, 100},  // Tool 1 (digital GPIO PD12 - limits unused)
+    [PWM_10_TOOL_2]                  = {0, 100},  // Tool 2 (digital GPIO PD14 - limits unused)
+    [PWM_11_SLEW_CW]                 = {0, 100},  // Slew CW
+    [PWM_12_SLEW_CCW]                = {0, 100},  // Slew CCW
+    [PWM_13_OUTRIGGER_LEFT_UP]       = {0, 100},  // Outrigger Left UP
+    [PWM_14_OUTRIGGER_LEFT_DOWN]     = {0, 100},  // Outrigger Left DOWN
+    [PWM_15_OUTRIGGER_RIGHT_UP]      = {0, 100},  // Outrigger Right UP
+    [PWM_16_OUTRIGGER_RIGHT_DOWN]    = {0, 100},  // Outrigger Right DOWN
+    [PWM_17_TRACK_RIGHT_FORWARD]     = {0, 100},  // Track Right FORWARD
+    [PWM_18_TRACK_RIGHT_BACKWARD]    = {0, 100},  // Track Right BACKWARD
+    [PWM_19_TRACK_LEFT_FORWARD]      = {0, 100},  // Track Left FORWARD
+    [PWM_20_TRACK_LEFT_BACKWARD]     = {0, 100},  // Track Left BACKWARD
+};
+
+/* Private variables - PWM smoothing -----------------------------------------*/
+#if PWM_RAMPING_ENABLED
+static uint8_t prev_pwm_target[20] = {0};  // Previous PWM target values for ramping
+#endif
+
+/* Private function prototypes -----------------------------------------------*/
+static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channel_t channel);
+static uint8_t ApplySmoothing(uint8_t new_pwm, PWM_Channel_t channel);
+
+/**
+  * @brief  Initialize control system
+  * @retval None
+  */
+void Control_Init(void)
+{
+    // Initialize PWM system
+    PWM_Init();
+
+    // Set all outputs to safe state (0%)
+    PWM_StopAll();
+}
+
+/**
+  * @brief  Update control outputs based on NRF24 data
+  * @param  lora_data: Pointer to received NRF24 data structure
+  * @retval None
+  */
+void Control_Update(NRF24_ReceivedData_t *lora_data)
+{
+    if (lora_data == NULL) return;
+
+    // ========================================================================
+    // EMERGENCY MODE - S0 = 0 (HIGHEST PRIORITY!)
+    // ========================================================================
+    if (lora_data->s0 == 0)
+    {
+        GPIOB->BSRR = (1<<(8+16)); // BR8 = reset PB8 to LOW
+        PWM_StopAll();
+        GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
+        GPIO_SetTool1(0);
+        unlock_latch = 0;          // Emergency = kunci lagi, wajib unlock ulang
+        return;  // Exit immediately - no further processing
+    }
+    else if (motor_rearm_required == 0)
+    {
+        GPIOB->BSRR = (1<<8);      // BS8 = set PB8 to HIGH
+    }
+
+    // ========================================================================
+    // RE-ARM SETELAH SINYAL PUTUS
+    // ========================================================================
+    // Dicek SEBELUM mode/PWM (dulu setelahnya): begitu link putus, mesin tidak
+    // boleh hidup sendiri saat link kembali. Relay emergency (PB8), motor (PE6)
+    // dan SELURUH PWM ditahan sampai operator melepas lalu menekan lagi S2_1.
+    if (motor_rearm_required)
+    {
+        if (lora_data->s2_1 == 0)
+        {
+            s2_1_released = 1;         // tombol dilepas
+        }
+        else if (s2_1_released)
+        {
+            motor_rearm_required = 0;  // ditekan lagi = start ulang, boleh arm
+        }
+
+        if (motor_rearm_required)
+        {
+            GPIOB->BSRR = (1<<(8+16)); // BR8 = relay emergency tetap drop
+            PWM_StopAll();
+            GPIOE->BSRR = (1<<(6+16)); // BR6 = tahan PE6 LOW sampai start ulang
+            GPIO_SetTool1(0);
+            return;
+        }
+
+        GPIOB->BSRR = (1<<8);          // re-arm selesai: relay boleh naik lagi
+    }
+
+    // ========================================================================
+    // SLEEP MODE - unlocked = 0 (ALL PWM = 0)
+    // ========================================================================
+    // Gate PWM pada status unlock (S1_1), bukan motor start (S2_1), supaya
+    // solenoid bisa dites tanpa menyalakan motor. Relay PE6 tetap ikut
+    // motor_active di bawah.
+    //
+    // Latch di-set dari tiga sumber supaya tidak bergantung versi firmware TX:
+    //   s1_1        - tombol unlock mentah (TX menolkannya selama joystick
+    //                 belum center, jadi interlock SLEEP tetap berlaku)
+    //   unlocked    - bit 14, TX firmware baru
+    //   motor_active- TX firmware lama yang belum kirim bit 14
+    // Latch hanya direset oleh EMERGENCY (S0=0) di atas.
+    if (lora_data->s1_1 || lora_data->unlocked || lora_data->motor_active)
+    {
+        unlock_latch = 1;
+    }
+
+    if (unlock_latch == 0)
+    {
+        PWM_StopAll();
+        GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
+        GPIO_SetTool1(0);
+        return;  // Exit immediately - no further processing
+    }
+
+    // ========================================================================
+    // MODE DETECTION
+    // ========================================================================
+    // Mode UPPER: s5_1 = 0, s5_2 = 0 → Excavator controls (cylinders, slew)
+    // Mode DUAL:  s5_1 = 1, s5_2 = 0 → Reserved for future implementation
+    // Mode LOWER: s5_1 = 0, s5_2 = 1 → Mobility controls (tracks, outriggers)
+
+    bool mode_upper = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 0);
+    bool mode_dual  = (lora_data->s5_1 == 1) && (lora_data->s5_2 == 0);
+    bool mode_lower = (lora_data->s5_1 == 0) && (lora_data->s5_2 == 1);
+
+    // ========================================================================
+    // MODE-SWITCH NEUTRAL INTERLOCK
+    // ========================================================================
+    // Membalik S5 seketika me-remap joystick ke aktuator LAIN. Kalau operator
+    // pindah mode sementara stik masih terdefleksi, aktuator yang tidak diduga
+    // langsung bergerak sebesar defleksi itu. Setelah tiap perubahan mode,
+    // tahan semua output proporsional di 0 sampai keempat sumbu kembali netral.
+    // Motor (PE6) tetap jalan - hanya gerakan yang di-gate, operator cukup
+    // melepas stik.
+    {
+        static uint8_t last_mode_bits = 0xFF;      // 0xFF = belum diinisialisasi
+        static uint8_t mode_switch_block = 0;
+
+        uint8_t mode_bits = (uint8_t)((lora_data->s5_1 << 1) | lora_data->s5_2);
+        if (last_mode_bits == 0xFF)
+        {
+            last_mode_bits = mode_bits;            // paket pertama: tidak diblok
+        }
+        else if (mode_bits != last_mode_bits)
+        {
+            last_mode_bits = mode_bits;
+            mode_switch_block = 1;
+        }
+
+        if (mode_switch_block)
+        {
+            // ponytail: toleransi netral tetap (+/-10). Kalau joystick TX
+            // drift setelah kalibrasi, longgarkan angka ini - jangan hapus cek.
+            #define MODE_SWITCH_NEUTRAL_TOL 10
+            bool sticks_neutral =
+                (lora_data->joy_left_x  >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_x  <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_y  >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_left_y  <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_x >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_x <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_y >= JOYSTICK_CENTER - MODE_SWITCH_NEUTRAL_TOL) &&
+                (lora_data->joy_right_y <= JOYSTICK_CENTER + MODE_SWITCH_NEUTRAL_TOL);
+
+            if (sticks_neutral)
+            {
+                mode_switch_block = 0;             // stik dilepas: lanjut normal
+            }
+            else
+            {
+                PWM_StopAll();                     // ikut menolkan Tool 1 GPIO
+                if (lora_data->motor_active)
+                {
+                    GPIOE->BSRR = (1 << 6);        // motor starter tetap ON
+                }
+                return;
+            }
+        }
+    }
+
+    // ========================================================================
+    // MODE UPPER - EXCAVATOR CONTROLS
+    // ========================================================================
+    if (mode_upper)
+    {
+        // --------------------------------------------------------------------
+        // BRAKE - selalu ON (100%) selama mode UPPER
+        // --------------------------------------------------------------------
+        // Brake dilepas (0%) di mode LOWER dan DUAL, lihat akhir tiap cabang.
+        PWM_SetDutyCycle(PWM_1_BRAKE, 100);
+
+        // --------------------------------------------------------------------
+        // CYLINDER_1_ON - katup solenoid, di-toggle joy_right_btn1
+        // --------------------------------------------------------------------
+        // Solenoid paralel antara cylinder 1 dan 2; katup ini yang membuka
+        // akses ke cylinder 1. Digital: terbuka penuh atau tertutup penuh.
+        if (lora_data->joy_right_btn1 == 1)
+        {
+            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 100);  // buka katup
+        }
+        else
+        {
+            PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);    // tutup katup
+        }
+
+        // --------------------------------------------------------------------
+        // LEFT STICK Y-AXIS: CYLINDER 3 (Bucket)
+        // --------------------------------------------------------------------
+        // joy_left_y: 127→255 = Cylinder 3 UP   (PWM_5) 0→100%
+        //             127→0   = Cylinder 3 DOWN (PWM_6) 0→100%
+
+        if (lora_data->joy_left_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Moving DOWN (0-117) → Cylinder 3 DOWN
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, true, PWM_6_CYLINDER_3_IN);
+            PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, pwm_value);
+            PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
+        }
+        else if (lora_data->joy_left_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Moving UP (137-255) → Cylinder 3 UP
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, false, PWM_5_CYLINDER_3_OUT);
+            PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, pwm_value);
+            PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
+        }
+        else
+        {
+            // Deadzone - stop both
+            PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
+            PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
+        }
+
+        // --------------------------------------------------------------------
+        // LEFT STICK X-AXIS: SLEW ROTATION
+        // --------------------------------------------------------------------
+        // joy_left_x: 127→255 = Slew CW  (PWM_11) 0→100%
+        //             127→0   = Slew CCW (PWM_12) 0→100%
+
+        if (lora_data->joy_left_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Moving LEFT (0-117) → Slew CCW
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true, PWM_12_SLEW_CCW);
+            PWM_SetDutyCycle(PWM_12_SLEW_CCW, pwm_value);
+            PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
+        }
+        else if (lora_data->joy_left_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Moving RIGHT (137-255) → Slew CW
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false, PWM_11_SLEW_CW);
+            PWM_SetDutyCycle(PWM_11_SLEW_CW, pwm_value);
+            PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
+        }
+        else
+        {
+            // Deadzone - stop both
+            PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
+            PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
+        }
+
+        // --------------------------------------------------------------------
+        // RIGHT STICK Y-AXIS: CYLINDER 2
+        // --------------------------------------------------------------------
+        // joy_right_y: 127->0   = Cylinder 2 OUT (PWM_3) 0->100%
+        //              127->255 = Cylinder 2 IN  (PWM_4) 0->100%
+        //
+        // Beda dengan varian 110: di sini stik kanan Y TIDAK lagi bisa dialihkan
+        // ke cylinder 1 lewat joy_right_btn2. Cylinder 1 pada mesin 250 dikontrol
+        // oleh katup PWM_2_CYLINDER_1_ON (joy_right_btn1) di atas.
+
+        if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Stick DOWN (0-117) -> Cylinder 2 OUT
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_3_CYLINDER_2_OUT);
+            PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, pwm_value);
+            PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+        }
+        else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Stick UP (137-255) -> Cylinder 2 IN
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_4_CYLINDER_2_IN);
+            PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, pwm_value);
+            PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+        }
+        else
+        {
+            // Deadzone - stop keduanya
+            PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+            PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+        }
+
+        // --------------------------------------------------------------------
+        // RIGHT STICK X-AXIS: CYLINDER 4 (Reversed mapping!)
+        // --------------------------------------------------------------------
+        // joy_right_x: 127→0   = Cylinder 4 DOWN (PWM_7) 0→100%
+        //              127→255 = Cylinder 4 UP   (PWM_8) 0→100%
+
+        if (lora_data->joy_right_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Stick LEFT (0-117) → Cylinder 4 DOWN
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true, PWM_7_CYLINDER_4_OUT);
+            PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, pwm_value);
+            PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
+        }
+        else if (lora_data->joy_right_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Stick RIGHT (137-255) → Cylinder 4 UP
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false, PWM_8_CYLINDER_4_IN);
+            PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, pwm_value);
+            PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
+        }
+        else
+        {
+            // Deadzone - stop both
+            PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
+            PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
+        }
+
+        // --------------------------------------------------------------------
+        // BREAKER - 2 Valve Control
+        // --------------------------------------------------------------------
+        // Valve 1 (GPIO PD12) and Valve 2 (GPIO PD14): both ON/OFF digital,
+        // driven together by joy_left_btn2. No proportional flow - the R8 pot
+        // that used to meter Valve 2 is gone from the transmitter.
+        //
+        // joy_left_btn2 = 1 → Breaker ON  (PD12 + PD14 HIGH)
+        // joy_left_btn2 = 0 → Breaker OFF (PD12 + PD14 LOW)
+
+        uint8_t breaker_on = (lora_data->joy_left_btn2 == 1) ? 1 : 0;
+        GPIO_SetTool1(breaker_on);  // Valve 1
+        GPIO_SetTool2(breaker_on);  // Valve 2
+
+        // Stop all mobility controls in UPPER mode
+        PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+        PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+        PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+        PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+        PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
+        PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
+        PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+        PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
+    }
+
+    // ========================================================================
+    // MODE LOWER - MOBILITY CONTROLS
+    // ========================================================================
+    else if (mode_lower)
+    {
+        // --------------------------------------------------------------------
+        // LEFT STICK Y-AXIS: TRACK LEFT
+        // --------------------------------------------------------------------
+        // joy_left_y: 127→255 = Track Left Forward  (PWM_19) 0→100%
+        //             127→0   = Track Left Backward (PWM_20) 0→100%
+
+        if (lora_data->joy_left_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Moving DOWN (0-117) → Track Left Backward
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, true, PWM_20_TRACK_LEFT_BACKWARD);
+            PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, pwm_value);
+            PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+        }
+        else if (lora_data->joy_left_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Moving UP (137-255) → Track Left Forward
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_y, false, PWM_19_TRACK_LEFT_FORWARD);
+            PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, pwm_value);
+            PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+        }
+        else
+        {
+            // Deadzone - stop both
+            PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+            PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+        }
+
+        // --------------------------------------------------------------------
+        // LEFT STICK X-AXIS: OUTRIGGER RIGHT (swapped due to electrical wiring)
+        // --------------------------------------------------------------------
+        // joy_left_x: 127→255 = Outrigger Right Up   (PWM_15) 0→100%
+        //             127→0   = Outrigger Right Down (PWM_16) 0→100%
+
+        if (lora_data->joy_left_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Moving LEFT (0-117) → Outrigger Right Down
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, true, PWM_16_OUTRIGGER_RIGHT_DOWN);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, pwm_value);
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+        }
+        else if (lora_data->joy_left_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Moving RIGHT (137-255) → Outrigger Right Up
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_left_x, false, PWM_15_OUTRIGGER_RIGHT_UP);
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, pwm_value);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
+        }
+        else
+        {
+            // Deadzone - stop both
+            PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+            PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
+        }
+
+        // --------------------------------------------------------------------
+        // RIGHT STICK Y-AXIS: TRACK RIGHT
+        // --------------------------------------------------------------------
+        // joy_right_y: 127→255 = Track Right Forward  (PWM_17) 0→100%
+        //              127→0   = Track Right Backward (PWM_18) 0→100%
+
+        if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Moving DOWN (0-117) → Track Right Backward
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_18_TRACK_RIGHT_BACKWARD);
+            PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, pwm_value);
+            PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+        }
+        else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Moving UP (137-255) → Track Right Forward
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_17_TRACK_RIGHT_FORWARD);
+            PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, pwm_value);
+            PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+        }
+        else
+        {
+            // Deadzone - stop both
+            PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+            PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+        }
+
+        // --------------------------------------------------------------------
+        // RIGHT STICK X-AXIS: OUTRIGGER LEFT (swapped due to electrical wiring)
+        // --------------------------------------------------------------------
+        // joy_right_x: 127→255 = Outrigger Left Down (PWM_14) 0→100%
+        //              127→0   = Outrigger Left Up   (PWM_13) 0→100%
+
+        if (lora_data->joy_right_x < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+        {
+            // Moving LEFT (0-117) → Outrigger Left Up
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, true, PWM_13_OUTRIGGER_LEFT_UP);
+            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, pwm_value);
+            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
+        }
+        else if (lora_data->joy_right_x > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+        {
+            // Moving RIGHT (137-255) → Outrigger Left Down
+            uint8_t pwm_value = MapJoystickToPWM(lora_data->joy_right_x, false, PWM_14_OUTRIGGER_LEFT_DOWN);
+            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, pwm_value);
+            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
+        }
+        else
+        {
+            // Deadzone - stop both
+            PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
+            PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
+        }
+
+        // Stop all excavator controls in LOWER mode
+        PWM_SetDutyCycle(PWM_1_BRAKE, 0);          // lepas brake di luar mode UPPER
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);  // tutup katup Cylinder 1
+        PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+        PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+        PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
+        PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
+        PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
+        PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
+        GPIO_SetTool1(0);                         // Stop Breaker Valve 1 (digital OFF)
+        GPIO_SetTool2(0);                         // Stop Breaker Valve 2 (digital OFF)
+    }
+
+    // ========================================================================
+    // MODE DUAL - COMBINED TRACK CONTROL
+    // ========================================================================
+    // When joy_right_btn1 is pressed, both tracks move together
+    // joy_right_y controls forward/backward for both tracks simultaneously
+    else if (mode_dual)
+    {
+        // --------------------------------------------------------------------
+        // BOTH TRACKS - Controlled by joy_right_btn1 + joy_right_y
+        // --------------------------------------------------------------------
+        // joy_right_btn1 = 1 (pressed): Enable track control
+        //   joy_right_y: 127→255 = Both tracks FORWARD
+        //                127→0   = Both tracks BACKWARD
+
+        if (lora_data->joy_right_btn1 == 1)
+        {
+            if (lora_data->joy_right_y < (JOYSTICK_CENTER - JOYSTICK_DEADZONE))
+            {
+                // Moving DOWN (0-117) → Both tracks BACKWARD
+                uint8_t pwm_left = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_20_TRACK_LEFT_BACKWARD);
+                uint8_t pwm_right = MapJoystickToPWM(lora_data->joy_right_y, true, PWM_18_TRACK_RIGHT_BACKWARD);
+
+                PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, pwm_left);
+                PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, pwm_right);
+                PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+                PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+            }
+            else if (lora_data->joy_right_y > (JOYSTICK_CENTER + JOYSTICK_DEADZONE))
+            {
+                // Moving UP (137-255) → Both tracks FORWARD
+                uint8_t pwm_left = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_19_TRACK_LEFT_FORWARD);
+                uint8_t pwm_right = MapJoystickToPWM(lora_data->joy_right_y, false, PWM_17_TRACK_RIGHT_FORWARD);
+
+                PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, pwm_left);
+                PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, pwm_right);
+                PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+                PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+            }
+            else
+            {
+                // Deadzone - stop all tracks
+                PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+                PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+                PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+                PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+            }
+        }
+        else
+        {
+            // joy_right_btn1 not pressed - stop all tracks
+            PWM_SetDutyCycle(PWM_19_TRACK_LEFT_FORWARD, 0);
+            PWM_SetDutyCycle(PWM_20_TRACK_LEFT_BACKWARD, 0);
+            PWM_SetDutyCycle(PWM_17_TRACK_RIGHT_FORWARD, 0);
+            PWM_SetDutyCycle(PWM_18_TRACK_RIGHT_BACKWARD, 0);
+        }
+
+        // Stop all excavator controls in DUAL mode
+        PWM_SetDutyCycle(PWM_1_BRAKE, 0);          // lepas brake di luar mode UPPER
+        PWM_SetDutyCycle(PWM_2_CYLINDER_1_ON, 0);  // tutup katup Cylinder 1
+        PWM_SetDutyCycle(PWM_3_CYLINDER_2_OUT, 0);
+        PWM_SetDutyCycle(PWM_4_CYLINDER_2_IN, 0);
+        PWM_SetDutyCycle(PWM_5_CYLINDER_3_OUT, 0);
+        PWM_SetDutyCycle(PWM_6_CYLINDER_3_IN, 0);
+        PWM_SetDutyCycle(PWM_7_CYLINDER_4_OUT, 0);
+        PWM_SetDutyCycle(PWM_8_CYLINDER_4_IN, 0);
+        PWM_SetDutyCycle(PWM_11_SLEW_CW, 0);
+        PWM_SetDutyCycle(PWM_12_SLEW_CCW, 0);
+        GPIO_SetTool1(0);                          // Stop Breaker Valve 1 (digital OFF)
+        GPIO_SetTool2(0);                          // Stop Breaker Valve 2 (digital OFF)
+        PWM_SetDutyCycle(PWM_13_OUTRIGGER_LEFT_UP, 0);
+        PWM_SetDutyCycle(PWM_14_OUTRIGGER_LEFT_DOWN, 0);
+        PWM_SetDutyCycle(PWM_15_OUTRIGGER_RIGHT_UP, 0);
+        PWM_SetDutyCycle(PWM_16_OUTRIGGER_RIGHT_DOWN, 0);
+    }
+    else
+    {
+        // s5_1 = 1 DAN s5_2 = 1: kombinasi yang tidak memetakan ke mode manapun.
+        // Tanpa cabang ini, Control_Update() selesai normal tanpa menyentuh PWM
+        // satu pun, sehingga SETIAP kanal menahan duty terakhirnya selamanya -
+        // satu bounce switch saat stik terdefleksi penuh mengunci mesin di
+        // defleksi penuh. Failsafe tidak menolong: paket tetap datang.
+        PWM_StopAll();
+    }
+
+    // ========================================================================
+    // PE6 (MOTOR STARTER) - GPIO CONTROL
+    // ========================================================================
+    // Motor starter controlled by motor_active flag from transmitter
+    // - motor_active = 1 → PE6 = HIGH (motor ON)
+    // - motor_active = 0 → PE6 = LOW  (motor OFF)
+    // Note: PE6 is also forced LOW during emergency (S0=0) and sleep mode
+    //
+    // Setelah sinyal putus, motor TIDAK boleh start sendiri: butuh transisi
+    // 0→1 pada motor_active (S2_1 dimatikan lalu dinyalakan lagi di remote).
+
+    if (lora_data->motor_active == 1)
+    {
+        GPIOE->BSRR = (1<<6);      // BS6 = set PE6 to HIGH
+    }
+    else
+    {
+        GPIOE->BSRR = (1<<(6+16)); // BR6 = reset PE6 to LOW
+    }
+}
+
+/**
+  * @brief  Paksa start ulang motor dari remote (dipanggil saat sinyal putus)
+  * @retval None
+  */
+void Control_RequireMotorRestart(void)
+{
+    motor_rearm_required = 1;
+    s2_1_released = 0;
+}
+
+/**
+  * @brief  Apply smooth curve to PWM value for gradual start/stop
+  * @param  pwm_value: Linear PWM value (0-100%)
+  * @retval Smoothed PWM value (0-100%)
+  */
+static uint8_t ApplySmoothCurve(uint8_t pwm_value)
+{
+#if SMOOTH_CURVE_ENABLED
+    if (pwm_value == 0) return 0;
+
+    // Apply exponential curve for smooth start
+    // Formula: output = input^1.5 for smooth acceleration
+    // Using integer math: pwm * sqrt(pwm) / 10
+    uint16_t temp = pwm_value * pwm_value;  // pwm^2
+    temp = temp / 100;                       // Normalize
+
+    // Approximate sqrt using lookup or linear interpolation
+    // For simplicity, use quadratic curve: pwm^2 / 100
+    uint8_t result = (uint8_t)temp;
+
+    return result;
+#else
+    return pwm_value;
+#endif
+}
+
+/**
+  * @brief  Apply PWM ramping for smooth transitions
+  * @param  new_pwm: Target PWM value
+  * @param  channel: PWM channel
+  * @retval Ramped PWM value (limited rate of change)
+  */
+static uint8_t ApplySmoothing(uint8_t new_pwm, PWM_Channel_t channel)
+{
+#if PWM_RAMPING_ENABLED
+    uint8_t prev_pwm = prev_pwm_target[channel];
+    uint8_t ramped_pwm = new_pwm;
+
+    // Calculate difference
+    int16_t diff = (int16_t)new_pwm - (int16_t)prev_pwm;
+
+    // Apply rate limiting
+    if (diff > MAX_PWM_CHANGE_PER_CYCLE)
+    {
+        ramped_pwm = prev_pwm + MAX_PWM_CHANGE_PER_CYCLE;
+    }
+    else if (diff < -MAX_PWM_CHANGE_PER_CYCLE)
+    {
+        ramped_pwm = prev_pwm - MAX_PWM_CHANGE_PER_CYCLE;
+    }
+
+    // Store for next cycle
+    prev_pwm_target[channel] = ramped_pwm;
+
+    return ramped_pwm;
+#else
+    return new_pwm;
+#endif
+}
+
+/**
+  * @brief  Map joystick value (0-255) to PWM duty cycle with per-channel limiting
+  * @param  joystick_value: Raw joystick value (0-255)
+  * @param  inverse: true = map 0-127 to 0-100%, false = map 127-255 to 0-100%
+  * @param  channel: PWM channel to get min/max limits for
+  * @retval PWM duty cycle percentage (min-max% when active, 0% when stopped)
+  */
+static uint8_t MapJoystickToPWM(uint8_t joystick_value, bool inverse, PWM_Channel_t channel)
+{
+    uint8_t pwm_value = 0;
+
+    if (inverse)
+    {
+        // Map 0-127 to 100-0% (inverse: 0 = max, 127 = 0)
+        if (joystick_value <= JOYSTICK_CENTER)
+        {
+            pwm_value = ((JOYSTICK_CENTER - joystick_value) * 100) / JOYSTICK_CENTER;
+        }
+    }
+    else
+    {
+        // Map 127-255 to 0-100% (normal: 127 = 0, 255 = max)
+        if (joystick_value >= JOYSTICK_CENTER)
+        {
+            pwm_value = ((joystick_value - JOYSTICK_CENTER) * 100) / JOYSTICK_CENTER;
+        }
+    }
+
+    // Clamp to 0-100%
+    if (pwm_value > 100) pwm_value = 100;
+
+    // Apply smooth curve for gradual start/stop
+    pwm_value = ApplySmoothCurve(pwm_value);
+
+    // Apply PWM limiting: 0% stays 0%, 1-100% maps to channel's min-max
+    if (pwm_value > 0)
+    {
+        // Get limits for this specific channel
+        uint8_t pwm_min = pwm_limits[channel].min;
+        uint8_t pwm_max = pwm_limits[channel].max;
+
+        // Scale from 0-100% to pwm_min-pwm_max
+        // Formula: output = min + (input * (max - min) / 100)
+        pwm_value = pwm_min + ((pwm_value * (pwm_max - pwm_min)) / 100);
+    }
+
+    // Apply ramping for smooth transitions
+    pwm_value = ApplySmoothing(pwm_value, channel);
+
+    return pwm_value;
+}
