@@ -8,6 +8,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "oled.h"
+#include "var.h"
 #include <stdio.h>
 
 /* Private defines -----------------------------------------------------------*/
@@ -899,7 +900,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
         OLED_WriteString((char*)mode_name, FONT_SIZE_SMALL);
 
         // Calculate UP/DOWN percentages for all cylinders
-        // CYL1: Not used in UPPER mode - always 0%
+        // CYL1: ON/OFF valve on joy_right_btn1 (machine 250), replaces the CYL2 label while held
 
         // CYL2: right_y < 127 = UP, right_y > 127 = DOWN
         uint8_t c2_up = (right_y < 127) ? ((127 - right_y) * 100) / 127 : 0;
@@ -919,7 +920,7 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 
         // Display format: "CYL X UP=XX% DOWN=XX%"
         OLED_SetCursor(0, 20);
-        snprintf(line_buffer, sizeof(line_buffer), "CYL2 UP=%d%% DOWN=%d%%", c2_up, c2_dn);
+        snprintf(line_buffer, sizeof(line_buffer), "CYL%d UP=%d%% DOWN=%d%%", tx_data.switches.joy_right_btn1 ? 1 : 2, c2_up, c2_dn);
         OLED_WriteString(line_buffer, FONT_SIZE_SMALL);
 
         OLED_SetCursor(0, 28);
