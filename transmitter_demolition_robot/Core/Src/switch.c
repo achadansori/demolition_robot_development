@@ -20,8 +20,8 @@
   * - S0:             PB0
   * - S1_1:           PE3
   * - S1_2:           PE5
-  * - S2_1:           PE1
-  * - S2_2:           PB8
+  * - S2_1:           PB8  (net S2_2 di skematik - sengaja dibalik)
+  * - S2_2:           PE1  (net S2_1 di skematik - sengaja dibalik)
   * - S4_1:           PD6
   * - S4_2:           PB3
   * - S5_1:           PB5
@@ -77,8 +77,8 @@ void Switch_Read(Switch_Data_t* data)
     data->s0   = Switch_ReadPin(S0_GPIO_Port, S0_Pin);
     data->s1_1 = Switch_ReadPin(S1_1_GPIO_Port, S1_1_Pin);
     data->s1_2 = Switch_ReadPin(S1_2_GPIO_Port, S1_2_Pin);
-    data->s2_1 = Switch_ReadPin(S2_1_GPIO_Port, S2_1_Pin);
-    data->s2_2 = Switch_ReadPin(S2_2_GPIO_Port, S2_2_Pin);
+    data->s2_1 = Switch_ReadPin(S2_2_GPIO_Port, S2_2_Pin);  // dibalik: s2_1 dibaca dari PB8
+    data->s2_2 = Switch_ReadPin(S2_1_GPIO_Port, S2_1_Pin);  // dibalik: s2_2 dibaca dari PE1
     data->s4_1 = Switch_ReadPin(S4_1_GPIO_Port, S4_1_Pin);
     data->s4_2 = Switch_ReadPin(S4_2_GPIO_Port, S4_2_Pin);
     data->s5_1 = Switch_ReadPin(S5_1_GPIO_Port, S5_1_Pin);

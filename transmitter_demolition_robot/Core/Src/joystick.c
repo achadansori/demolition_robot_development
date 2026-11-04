@@ -431,6 +431,8 @@ void Joystick_Read(Joystick_Data_t* data)
     // (PA2 not in scan anymore - removed to kill cross-talk noise)
 
     // Convert 12-bit to 8-bit, apply median-of-3 glitch filter, then calibration
+    // Sengaja: PC1 (net JOY_LEFT_Y di skematik) -> left_x. Sudah dites di robot
+    // (slew = left_x, cylinder 3 = left_y); mengikuti nama net malah menukar keduanya.
     uint8_t raw_lx = (uint8_t)(adc_buffer[0] >> 4);
     uint8_t raw_ly = (uint8_t)(adc_buffer[1] >> 4);
     uint8_t raw_ry = (uint8_t)(adc_buffer[2] >> 4);

@@ -608,7 +608,7 @@ void OLED_ShowSplashScreen(void)
 }
 
 /**
-  * @brief  Draw battery bar (without percentage text)
+  * @brief  Draw battery bar (percentage text is drawn by the caller)
   * @param  x: X coordinate (top-left corner)
   * @param  y: Y coordinate (top-left corner)
   * @param  battery_percent: Battery percentage (0-100%)
@@ -628,8 +628,8 @@ void OLED_DrawBatteryBar(uint8_t x, uint8_t y, uint8_t battery_percent)
         battery_percent = 100;
     }
 
-    // Battery icon dimensions - larger since no percentage text
-    uint8_t battery_width = 50;    // Inner battery bar width (increased from 30)
+    // Battery icon dimensions - narrowed so the percentage text fits beside it
+    uint8_t battery_width = 14;    // Inner battery bar width (narrow: top bar also holds AZM250)
     uint8_t battery_height = 6;    // Battery height
     uint8_t battery_nub = 2;       // Battery positive terminal width
 
@@ -736,12 +736,26 @@ void OLED_ShowModeScreen(uint8_t s5_1, uint8_t s5_2, const uint8_t* joystick_dat
 
         char sig_text[8];
         snprintf(sig_text, sizeof(sig_text), "%d%%", link_quality);
-        OLED_SetCursor(20, 2);
+        OLED_SetCursor(17, 2);
         OLED_WriteString(sig_text, FONT_SIZE_SMALL);
     }
 
-    // Battery bar at top-right (centered vertically at y=1)
-    OLED_DrawBatteryBar(72, 1, battery_percent);
+    // Robot type between signal and battery.
+    // Layout (worst case "100%"): bars 0-14, signal % 17-39, "AZM 250" 43-80,
+    // battery % 84-107, battery icon 110-127. Small font = 6 px/char.
+    // Written as two words with a 3 px gap: a full 6 px space would not fit.
+    OLED_SetCursor(43, 2);
+    OLED_WriteString("AZM", FONT_SIZE_SMALL);
+    OLED_SetCursor(63, 2);
+    OLED_WriteString("250", FONT_SIZE_SMALL);
+
+    // Battery (PA0): percentage text right-aligned against the bar at top-right.
+    // Bar = 16 px outline + 2 px nub -> x 110..127.
+    char bat_text[6];
+    int bat_len = snprintf(bat_text, sizeof(bat_text), "%u%%", battery_percent);
+    OLED_SetCursor(108 - 6 * bat_len, 2);
+    OLED_WriteString(bat_text, FONT_SIZE_SMALL);
+    OLED_DrawBatteryBar(110, 1, battery_percent);
 
     // Draw separator line below top bar
     for (uint8_t i = 0; i < OLED_WIDTH; i++)
