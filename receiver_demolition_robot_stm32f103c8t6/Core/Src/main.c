@@ -35,6 +35,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* Status lamp (receiver_V.1.2 RGB_Lamp via 1k, active high) */
+#define LAMP_GREEN_Pin   GPIO_PIN_7
+#define LAMP_YELLOW_Pin  GPIO_PIN_8
+#define LAMP_RED_Pin     GPIO_PIN_9
+#define LAMP_GPIO_Port   GPIOB
+#define LAMP_ALL_Pins    (LAMP_GREEN_Pin | LAMP_YELLOW_Pin | LAMP_RED_Pin)
 
 /* USER CODE END PD */
 
@@ -52,6 +58,10 @@ TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
 CANopenNodeSTM32 canOpenNodeSTM32;
+/* Debug: watch in CubeIDE Live Expressions. 76 = NRF OK, 0x00/0xFF = no SPI reply, 2 = chip reset */
+volatile uint8_t dbg_nrf_rf_ch = 0;
+volatile uint8_t clock_source_is_hsi = 0;  /* 1 = HSE crystal failed, running on HSI */
+volatile uint32_t dbg_nrf_rx_count = 0;
 
 /* USER CODE END PV */
 
@@ -166,11 +176,31 @@ int main(void)
     {
       have_packet = 1;
       last_rf_ms = HAL_GetTick();
+      dbg_nrf_rx_count++;
     }
     else if ((HAL_GetTick() - last_rf_ms) >= 500u)
     {
       for (int i = 0; i < 8; i++) { d[i] = 0; }   /* radio lost -> safe packet */
       have_packet = 1;
+    }
+
+    /* === Radio watchdog (same idea as control_demolition_robot_250) ===
+     * Once per second, read RF_CH back: anything but 76 means the chip is not
+     * answering on SPI (0x00/0xFF) or was reset by a supply dip (default 2).
+     * Reconfigure in that case, or when no packet arrived for >3 s, so the
+     * radio recovers without pressing the reset button. */
+    static uint32_t last_chk_ms = 0;
+    static uint8_t  radio_alive = 0;
+    if ((HAL_GetTick() - last_chk_ms) >= 1000u)
+    {
+      last_chk_ms = HAL_GetTick();
+      dbg_nrf_rf_ch = NRF24_ReadReg(NRF24_REG_RF_CH);
+      radio_alive = (dbg_nrf_rf_ch == 76u);
+      if (!radio_alive || (HAL_GetTick() - last_rf_ms) > 3000u)
+      {
+        NRF24_Configure();
+        NRF24_StartListening();
+      }
     }
 
     if (have_packet && canopenNodeSTM32 != NULL && canopenNodeSTM32->canOpenStack != NULL)
@@ -202,6 +232,18 @@ int main(void)
         if (lost_ms == 0u) { lost_ms = tnow; }
         else if ((tnow - lost_ms) >= 2000u) { lost_ms = tnow; canopen_app_resetCommunication(); }
       }
+
+      /* === Status lamp ===
+       * red blink = NRF24 chip not answering on SPI (wiring / 3.3 V supply)
+       * red       = chip OK but no packet (>500 ms), failsafe packet is sent
+       * yellow    = radio OK but control board heartbeat missing
+       * green     = radio and CAN both OK */
+      uint8_t radio_ok = (HAL_GetTick() - last_rf_ms) < 500u;
+      uint16_t lamp = !radio_alive ? (((HAL_GetTick() / 250u) & 1u) ? LAMP_RED_Pin : 0u)
+                    : !radio_ok    ? LAMP_RED_Pin
+                    : (link_alive ? LAMP_GREEN_Pin : LAMP_YELLOW_Pin);
+      HAL_GPIO_WritePin(LAMP_GPIO_Port, LAMP_ALL_Pins & ~lamp, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(LAMP_GPIO_Port, lamp, GPIO_PIN_SET);
     }
 
     canopen_app_process();
@@ -221,16 +263,42 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
+  /* SYSCLK = 64 MHz from either source, so CAN / TIM4 / SPI timing is the same:
+   *   HSE 8 MHz x 8         = 64 MHz (preferred, crystal accuracy)
+   *   HSI 8 MHz / 2 x 16    = 64 MHz (fallback if the crystal never starts)
+   * Without the fallback a dead/slow crystal hangs the board in Error_Handler
+   * before any GPIO is set up (NRF CE/CSN stay floating, radio never works). */
+  HAL_StatusTypeDef status = HAL_ERROR;
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL8;
+  for (uint8_t attempt = 0; attempt < 5; attempt++)
   {
-    Error_Handler();
+    status = HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    if (status == HAL_OK)
+    {
+      break;
+    }
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+    HAL_Delay(50);  /* SysTick still runs on HSI here */
+  }
+  if (status != HAL_OK)
+  {
+    clock_source_is_hsi = 1;
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
+    RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -267,7 +335,7 @@ static void MX_CAN_Init(void)
   hcan.Init.Prescaler = 4;
   hcan.Init.Mode = CAN_MODE_NORMAL;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_15TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_13TQ;   /* 32 MHz / 4 / (1+13+2) = 500 kbps, SP 87.5% */
   hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = ENABLE;
@@ -342,7 +410,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 71;
+  htim4.Init.Prescaler = 63;          /* 64 MHz / 64 = 1 MHz */
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -398,6 +466,12 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
+  HAL_GPIO_WritePin(LAMP_GPIO_Port, LAMP_ALL_Pins, GPIO_PIN_RESET);
+  GPIO_InitStruct.Pin = LAMP_ALL_Pins;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LAMP_GPIO_Port, &GPIO_InitStruct);
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
